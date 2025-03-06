@@ -49,33 +49,7 @@ Example: images/kiss/kiss1.gif, images/shower/shower1.jpg.
 Run Yuki:
 python bot.py
 
-⚡ Project Structure :
 
-telegram-ai-girlfriend/
-├── bot.py              # Main bot logic
-├── config.py          # Configuration settings
-├── memory_manager.py  # User memory handling
-├── emotion_engine.py  # Mood system
-├── image_handler.py   # Image management
-├── authorized_users.json  # Authorized user list (auto-generated)
-├── requirements.txt   # Dependencies
-├── images/            # Image assets
-│   ├── welcome/
-│   ├── profile/
-│   ├── kiss/
-│   ├── hug/
-│   ├── pic/
-│   ├── shower/       # NSFW content
-│   ├── sex/        # NSFW content
-│   ├── boobs/        # NSFW content
-│   ├── pussy/        # NSFW content
-│   ├── ass/        # NSFW content
-│   ├── dick/        # NSFW content
-│   ├── wet/        # NSFW content
-│   ├── tit/        # NSFW content
-│   ├── payment/
-│   └── [mood folders]/
-└── README.md         # You’re reading it!
 🎨 Usage
 Chat with Luna: Just say hi—she’ll flirt back!
 Commands: Try /start, /mood, /kiss, or explore /online for the full list.
