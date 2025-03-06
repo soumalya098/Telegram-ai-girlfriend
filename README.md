@@ -38,35 +38,40 @@ Unlock clear versions with owner approval via /payment.
 🛠 Installation & Setup
 
 Prerequisites
-
+```
 ✅ Python 3.7+ (Termux-friendly!)
 ✅ Telegram bot token from BotFather
 ✅ Google Gemini API key from Google AI Studio
 ✅ Termux or a similar environment
+```
 
 🚀 Installation Steps
 
 # Clone the repository
-git clone https://github.com/pyL1nx/telegram-ai-girlfriend.git
-cd telegram-ai-girlfriend
+```bash git clone https://github.com/pyL1nx/telegram-ai-girlfriend.git ```
+```bash cd telegram-ai-girlfriend```
 
 # Install dependencies
-pip install -r requirements.txt
+```bash pip install -r requirements.txt```
 
 # Set environment variables
+```bash
 export TELEGRAM_TOKEN='your-telegram-token'
 export GEMINI_API_KEY='your-gemini-api-key'
+```
 
 🔧 Configure Owner ID
 
 Edit bot.py and replace:
-
+```
 OWNER_ID = 123456789  # Your Telegram ID (Find it via @userinfobot)
+````
 
 🖼 Add Images
 
 Place images inside the images/ folder with subfolders:
 
+```
 images/
 ├── welcome/
 ├── profile/
@@ -74,20 +79,28 @@ images/
 ├── hug/
 ├── pic/
 ├── shower/
-├── dress/
+├── boobs/
+├── ass/
+├── pussy/
+├── wet/
+├── sex/
+├── naked/
+├── dick/
 ├── payment/
 └── mood/ (happy, sad, etc.)
+```
 
 Example:
 
+```
 images/kiss/kiss1.gif
 
 images/shower/shower1.jpg
-
+```
 
 ▶️ Run Yuki
 
-python bot.py
+```bash python bot.py```
 
 
 ---
@@ -113,10 +126,11 @@ Yuki’s spicy content is blurred unless you’re VIP!
 
 🔒 Owner Controls:
 
+```
 🔹 /auth <user_id> – Grant NSFW access
 🔹 /unauth <user_id> – Revoke access
 🔹 /reset – Start fresh with Yuki
-
+```
 
 ---
 
@@ -149,9 +163,3 @@ Built with ❤️ by @py0n1x.
 Got questions, ideas, or payment proofs? DM me on Telegram!
 
 "Hey babe, let’s make every chat a date!" — Yuki 😘
-
-
----
-
-This README has a stylish and engaging layout, perfect for attracting users. Let me know if you want any modifications!
-
