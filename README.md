@@ -11,23 +11,36 @@ Mood Swings: Check yuki’s vibe with /mood—she’s always feeling something f
 Love Stats: See your relationship grow with /profile—chats and her current mood, all for you.
 Kisses & Hugs: Send /kiss or /hug for a sweet GIF moment. 💋🤗
 Cute Pics: Ask for a /pic and get a flirty snapshot just for your eyes. 📸
+
 NSFW Content:
 Shower Moments
 Intimate Moments
 Naked Moment
+
 Locked Access: These spicy images are blurred by default. Unlock the clear versions with owner approval—see /payment below!
+
 Owner Controls:
+
 /auth <user_id>: Grant special access to NSFW content (owner only).
+
 /unauth <user_id>: Revoke access (owner only).
+
 Payment Unlock: Use /payment to learn how to see Luna’s exclusive pics—$1 and a wink to the owner! 💰
+
 Reset Romance: Start fresh with /reset—new sparks, same Luna. 💕
+
 🚀 Getting Started
+
 Prerequisites
+
 Python 3.7+ (Termux-friendly!)
 A Telegram bot token from BotFather
 A Google Gemini API key (get it from Google AI Studio)
+
 Termux or a similar environment for deployment
+
 Installation
+
 Clone the Repo:
 git clone https://github.com/pyL1nx/telegram-ai-girlfriend.git
 
@@ -40,8 +53,10 @@ Set Environment Variables:
 
 export TELEGRAM_TOKEN='your-telegram-token'
 export GEMINI_API_KEY='your-gemini-api-key'
+
 Configure Owner ID:
 Edit bot.py and replace OWNER_ID = 123456789 with your Telegram ID (find it via @userinfobot).
+
 Add Images:
 Populate the images/ folder with subfolders: welcome, profile, kiss, hug, pic, shower, dress, payment, and mood folders (happy, sad, etc.).
 Example: images/kiss/kiss1.gif, images/shower/shower1.jpg.
