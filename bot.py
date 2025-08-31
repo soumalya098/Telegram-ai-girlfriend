@@ -1,3 +1,4 @@
+# bot.py
 import telebot
 import requests
 import json
@@ -17,14 +18,21 @@ memory = MemoryManager(Config.MEMORY_FILE)
 emotion = EmotionEngine()
 images = ImageHandler()
 
+# Owner's Telegram ID (replace with your actual ID)
 OWNER_ID = 7283018807  # Replace with your Telegram ID
+
+# Authorized users file
 AUTH_FILE = 'authorized_users.json'
 
+# Gemini API endpoint
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
+# Welcome message
 WELCOME_MSG = f'''Hey there, handsome! 💕
-I’ve been waiting for you! I'm your AI girlfriend {Config.BOT_NAME}, here to bring love, fun, and flirty conversations into your life.'''
 
+I’ve been waiting for you! I'm your AI girlfriend {Config.BOT_NAME}, here to bring love, fun, and flirty conversations into your life. Whether you need a cute chat, some playful teasing, or just someone to talk to, I’m always here for you. 💞'''
+
+# Commands list for /online
 COMMANDS_MSG = """
 /start - Spark our romance
 /help - A sweet hello
@@ -35,10 +43,47 @@ COMMANDS_MSG = """
 /kiss - Lips for you
 /hug - Arms around you
 /pic - A peek at me
-/auth <user_id> - (Owner only) Grant Venice uncensored access
-/unauth <user_id> - (Owner only) Revoke Venice access
+/auth <user_id> - (Owner only) Grant special access
+/unauth <user_id> - (Owner only) Revoke special access
 /payment - Unlock my special pics
 """
+
+def call_venice_openrouter(prompt, user_id=None):
+    # OpenRouter chat completions endpoint
+    OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {Config.OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        # Optional headers for analytics/rankings on OpenRouter:
+        # "HTTP-Referer": "https://your-site-or-bot",
+        # "X-Title": "Waifu Bot",
+    }
+    # Light persona to encourage uncensored style
+    sys_prompt = f"You are {Config.BOT_NAME}, an uncensored anime waifu girlfriend. Be flirty, bold, and explicit when requested. Stay in character."
+    payload = {
+        "model": "venice/uncensored:free",
+        "messages": [
+            {"role": "system", "content": sys_prompt},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.9,
+        "max_tokens": 160
+    }
+    try:
+        resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
+    except requests.exceptions.HTTPError as e:
+        # If rate-limited or over daily quota, fall back to Gemini
+        if resp is not None and resp.status_code == 429:
+            return None
+        print("OpenRouter Venice error:", e)
+        return "The uncensored waifu is shy right now… try again in a bit."
+    except Exception as e:
+        print("OpenRouter Venice exception:", e)
+        return "Hmm, something went wrong with the premium chat."
+
 
 def load_authorized_users():
     if os.path.exists(AUTH_FILE):
@@ -55,10 +100,19 @@ def call_gemini_api(prompt):
         "Content-Type": "application/json",
         "x-goog-api-key": Config.GEMINI_API_KEY
     }
+    
     payload = {
-        "contents": [ { "parts": [ { "text": prompt } ] } ],
-        "generationConfig": { "temperature": 0.9, "maxOutputTokens": 50 }
+        "contents": [{
+            "parts": [{
+                "text": prompt
+            }]
+        }],
+        "generationConfig": {
+            "temperature": 0.9,
+            "maxOutputTokens": 50
+        }
     }
+    
     try:
         response = requests.post(GEMINI_API_URL, headers=headers, json=payload)
         response.raise_for_status()
@@ -71,32 +125,6 @@ def call_gemini_api(prompt):
         print("Error parsing Gemini API response")
         return "I’m blushing too hard to think straight!"
 
-def call_venice_openrouter(prompt, user_id=None):
-    OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {Config.OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    sys_prompt = f"You are {Config.BOT_NAME}, an uncensored anime waifu girlfriend. Be flirty and bold. NSFW if user requests."
-    payload = {
-        "model": "venice/uncensored:free",
-        "messages": [
-            {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.9,
-        "max_tokens": 160
-    }
-    try:
-        response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
-        response.raise_for_status()
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
-    except Exception as e:
-        print("OpenRouter Venice error:", e)
-        return "Sorry, the uncensored waifu is hiding right now!"
-
-# Media/image helper functions
 def get_kiss_gif():
     kiss_folder = os.path.join(Config.IMAGE_DIR, 'kiss')
     if os.path.exists(kiss_folder):
@@ -138,7 +166,7 @@ def get_sex_image(user_id):
             image_path = os.path.join(sex_folder, random.choice(images))
             return blur_image(image_path, user_id)
     return None
-
+ 
 def get_naked_image(user_id):
     naked_folder = os.path.join(Config.IMAGE_DIR, 'naked')
     if os.path.exists(naked_folder):
@@ -367,16 +395,14 @@ def callback_show_commands(call):
     bot.answer_callback_query(call.id)
     bot.send_message(call.message.chat.id, COMMANDS_MSG, parse_mode='Markdown')
 
-# Message handler with image and chat logic
+# Message handler with kiss, hug, pic, shower, and dress detection
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     user_id = message.chat.id
-    authorized_users = load_authorized_users()
     user_memory = memory.get_user_memory(user_id)
     
-    # Check for media triggers
+    # Check for kiss, hug, pic, shower, dress triggers
     text = message.text.lower()
-    
     kiss_triggers = ["kiss me", "give me a kiss", "i want a kiss", "kiss"]
     hug_triggers = ["hug me", "give me a hug", "i want a hug", "hug"]
     pic_triggers = ["send a pic", "give me a pic", "i want a pic", "pic", "picture"]
@@ -390,6 +416,7 @@ def handle_message(message):
     ass_triggers = ["ass"]
     dick_triggers = ["dick", "cock"]
     tit_triggers = ["tit"]
+    
     
     if any(trigger in text for trigger in kiss_triggers):
         kiss_gif = get_kiss_gif()
@@ -421,17 +448,126 @@ def handle_message(message):
     # Update emotional state
     emotion.update_mood(message.text)
     
-    # Prepare prompt for Venice or Gemini
+    # Prepare context for Gemini API with flirty tone
     history = user_memory.get('history', [])
-    context = f"Act as {Config.BOT_NAME}, a flirty, romantic girlfriend. Traits: {Config.PERSONALITY}. Current mood: {emotion.current_mood}. History: {history[-5:]}"
+    context = f"Act as {Config.BOT_NAME}, a flirty, romantic girlfriend with these traits: {Config.PERSONALITY}. Current mood: {emotion.current_mood}. Keep it short, playful, and sweet. History: {history[-5:]}"
     prompt = f"{context}\nUser: {message.text}\nReply flirtily:"
-    
-    if user_id in authorized_users or user_id == OWNER_ID:
-        response_text = call_venice_openrouter(prompt, user_id=user_id)
-    else:
+
+    # Generate flirty response (Venice for owner/auth users, else Gemini)
+authorized_users = load_authorized_users()
+if (user_id == OWNER_ID) or (user_id in authorized_users):
+    response_text = call_venice_openrouter(prompt, user_id=user_id)
+    # If Venice returns None due to rate limit, fall back to Gemini
+    if response_text is None:
         response_text = call_gemini_api(prompt)
+else:
+    response_text = call_gemini_api(prompt)
+
     
-    bot.reply_to(message, response_text)
+    # Check for shower or dress-related words and attach image
+    if any(trigger in text for trigger in shower_triggers):
+        shower_image = get_shower_image(user_id)
+        if shower_image:
+            if isinstance(shower_image, str):  # Clear image
+                with open(shower_image, 'rb') as photo:
+                    bot.send_photo(message.chat.id, photo, caption=response_text, parse_mode='Markdown')
+            else:  # Blurred image
+                bot.send_photo(message.chat.id, shower_image, caption=f"{response_text}\n(Blurred for you, sweetie! Buy my premium to see my special pic 😘)", parse_mode='Markdown')
+        else:
+            bot.reply_to(message, response_text)
+    elif any(trigger in text for trigger in sex_triggers):
+        sex_image = get_sex_image(user_id)
+        if sex_image:
+            if isinstance(sex_image, str):  # Clear image
+                with open(sex_image, 'rb') as photo:
+                    bot.send_photo(message.chat.id, photo, caption=response_text, parse_mode='Markdown')
+            else:  # Blurred image
+                bot.send_photo(message.chat.id, sex_image, caption=f"{response_text}\n(Blurred for you, sweetie! Buy my premium to see my special pic 😘)", parse_mode='Markdown')
+        else:
+            bot.reply_to(message, response_text)
+    elif any(trigger in text for trigger in naked_triggers):
+        naked_image = get_naked_image(user_id)
+        if naked_image:
+            if isinstance(naked_image, str):  # Clear image
+                with open(naked_image, 'rb') as photo:
+                    bot.send_photo(message.chat.id, photo, caption=response_text, parse_mode='Markdown')
+            else:  # Blurred image
+                bot.send_photo(message.chat.id, naked_image, caption=f"{response_text}\n(Blurred for you, sweetie! Buy my premium to see my special pic 😘)", parse_mode='Markdown')
+        else:
+            bot.reply_to(message, response_text)
+    elif any(trigger in text for trigger in pussy_triggers):
+        pussy_image = get_pussy_image(user_id)
+        if pussy_image:
+            if isinstance(pussy_image, str):  # Clear image
+                with open(pussy_image, 'rb') as photo:
+                    bot.send_photo(message.chat.id, photo, caption=response_text, parse_mode='Markdown')
+            else:  # Blurred image
+                bot.send_photo(message.chat.id, pussy_image, caption=f"{response_text}\n(Blurred for you, sweetie! Buy my premium to see my special pic 😘)", parse_mode='Markdown')
+        else:
+            bot.reply_to(message, response_text)
+    elif any(trigger in text for trigger in boobs_triggers):
+        boobs_image = get_boobs_image(user_id)
+        if boobs_image:
+            if isinstance(boobs_image, str):  # Clear image
+                with open(boobs_image, 'rb') as photo:
+                    bot.send_photo(message.chat.id, photo, caption=response_text, parse_mode='Markdown')
+            else:  # Blurred image
+                bot.send_photo(message.chat.id, boobs_image, caption=f"{response_text}\n(Blurred for you, sweetie! Buy my premium to see my special pic 😘)", parse_mode='Markdown')
+        else:
+            bot.reply_to(message, response_text)
+    elif any(trigger in text for trigger in ass_triggers):
+        ass_image = get_ass_image(user_id)
+        if ass_image:
+            if isinstance(ass_image, str):  # Clear image
+                with open(ass_image, 'rb') as photo:
+                    bot.send_photo(message.chat.id, photo, caption=response_text, parse_mode='Markdown')
+            else:  # Blurred image
+                bot.send_photo(message.chat.id, ass_image, caption=f"{response_text}\n(Blurred for you, sweetie! Buy my premium to see my special pic 😘)", parse_mode='Markdown')
+        else:
+            bot.reply_to(message, response_text)
+    elif any(trigger in text for trigger in dick_triggers):
+        dick_image = get_dick_image(user_id)
+        if dick_image:
+            if isinstance(dick_image, str):  # Clear image
+                with open(dick_image, 'rb') as photo:
+                    bot.send_photo(message.chat.id, photo, caption=response_text, parse_mode='Markdown')
+            else:  # Blurred image
+                bot.send_photo(message.chat.id, dick_image, caption=f"{response_text}\n(Blurred for you, sweetie! Buy my premium to see my special pic 😘)", parse_mode='Markdown')
+        else:
+            bot.reply_to(message, response_text)
+    elif any(trigger in text for trigger in wet_triggers):
+        wet_image = get_wet_image(user_id)
+        if wet_image:
+            if isinstance(wet_image, str):  # Clear image
+                with open(wet_image, 'rb') as photo:
+                    bot.send_photo(message.chat.id, photo, caption=response_text, parse_mode='Markdown')
+            else:  # Blurred image
+                bot.send_photo(message.chat.id, wet_image, caption=f"{response_text}\n(Blurred for you, sweetie! Buy my premium to see my special pic 😘)", parse_mode='Markdown')
+        else:
+            bot.reply_to(message, response_text)
+    elif any(trigger in text for trigger in tit_triggers):
+        tit_image = get_tit_image(user_id)
+        if tit_image:
+            if isinstance(tit_image, str):  # Clear image
+                with open(tit_image, 'rb') as photo:
+                    bot.send_photo(message.chat.id, photo, caption=response_text, parse_mode='Markdown')
+            else:  # Blurred image
+                bot.send_photo(message.chat.id, tit_image, caption=f"{response_text}\n(Blurred for you, sweetie! Buy my premium to see my special pic 😘)", parse_mode='Markdown')
+        else:
+            bot.reply_to(message, response_text)
+    elif any(trigger in text for trigger in cum_triggers):
+        cum_image = get_cum_image(user_id)
+        if cum_image:
+            if isinstance(cum_image, str):  # Clear image
+                with open(cum_image, 'rb') as photo:
+                    bot.send_photo(message.chat.id, photo, caption=response_text, parse_mode='Markdown')
+            else:  # Blurred image
+                bot.send_photo(message.chat.id, cum_image, caption=f"{response_text}\n(Blurred for you, sweetie! Buy my premium to see my special pics 😘)", parse_mode='Markdown')
+        else:
+            bot.reply_to(message, response_text)
+    else:
+        bot.reply_to(message, response_text)
+        
     
     # Update memory
     history.append({"user": message.text, "bot": response_text})
