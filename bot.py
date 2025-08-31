@@ -452,16 +452,14 @@ def handle_message(message):
     history = user_memory.get('history', [])
     context = f"Act as {Config.BOT_NAME}, a flirty, romantic girlfriend with these traits: {Config.PERSONALITY}. Current mood: {emotion.current_mood}. Keep it short, playful, and sweet. History: {history[-5:]}"
     prompt = f"{context}\nUser: {message.text}\nReply flirtily:"
-
-    # Generate flirty response (Venice for owner/auth users, else Gemini)
-authorized_users = load_authorized_users()
-if (user_id == OWNER_ID) or (user_id in authorized_users):
-    response_text = call_venice_openrouter(prompt, user_id=user_id)
-    # If Venice returns None due to rate limit, fall back to Gemini
-    if response_text is None:
-        response_text = call_gemini_api(prompt)
-else:
-    response_text = call_gemini_api(prompt)
+    authorized_users = load_authorized_users()
+    if (user_id == OWNER_ID) or (user_id in authorized_users):
+        response_text = call_venice_openrouter(prompt, user_id=user_id)
+       # Fallback to Gemini if Venice hits rate limit or returns None
+        if response_text is None:
+            response_text = call_gemini_api(prompt)
+        else:
+             response_text = call_gemini_api(prompt)
 
     
     # Check for shower or dress-related words and attach image
