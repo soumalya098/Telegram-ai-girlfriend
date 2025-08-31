@@ -2,9 +2,9 @@
 import os
 
 class Config:
-    TELEGRAM_TOKEN = '7804430632:AAEHuJu6K2Fen85azPayBB00LjNLtaOoUCk'
-    GEMINI_API_KEY = 'AIzaSyCX0kyWeiJOPv6npQSsBJE1nYQzAwpC8H0'
-    OPENROUTER_API_KEY = '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'
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 
     # File paths
     MEMORY_FILE = 'memory.json'
