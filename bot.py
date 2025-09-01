@@ -66,7 +66,7 @@ def get_user_apikey(user_id):
 
 # --- Build UPI deep link for unauth users ---
 def make_upi_link(user_id: int, amount: int = 80) -> str:
-    # UPI deep link params: pa (VPA), pn (Payee Name), am, cu, tr, tn
+    # UPI deep link params: pa (VPA), pn (Payee Name), am, cu, tr, tn [UPI deeplink spec] [3][4]
     vpa = "soumalya00@upi"
     pn = "Yuki Bot"
     now = datetime.datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y%m%dT%H%M%S")
@@ -111,8 +111,9 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
         resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
+        # Parse choices.message.content, fallback to choice["content"] [chat-completions pattern] [5][6]
         if isinstance(data, dict) and isinstance(data.get("choices"), list) and data["choices"]:
-            choice0 = data["choices"][0]
+            choice0 = data["choices"]
             if isinstance(choice0, dict):
                 msg = choice0.get("message")
                 if isinstance(msg, dict):
@@ -133,15 +134,13 @@ def forward_payment_media_to_owner(message):
     try:
         user_id = message.from_user.id
         caption = f"Payment screenshot from user_id: {user_id}"
-        # Photos (highest resolution variant)
         if message.photo:
-            file_id = message.photo[-1].file_id
+            file_id = message.photo[-1].file_id  # largest size
             file_info = bot.get_file(file_id)
             download = bot.download_file(file_info.file_path)
             bot.send_photo(OWNER_ID, download, caption=caption)
             bot.reply_to(message, "Thanks! Screenshot received. We'll verify and activate access shortly.")
             return
-        # Image files sent as documents
         if message.document and (message.document.mime_type or "").startswith("image/"):
             file_id = message.document.file_id
             file_info = bot.get_file(file_id)
@@ -153,7 +152,7 @@ def forward_payment_media_to_owner(message):
         print("Forward payment screenshot error:", e)
         bot.reply_to(message, "Couldn't process the screenshot. Please try again or contact support.")
 
-# --- Media helpers (using your ImageHandler) ---
+# --- Media helpers ---
 def get_kiss_gif(): return images.get_kiss_gif()
 def get_hug_gif(): return images.get_hug_gif()
 def get_pic_image(): return images.get_pic_image()
@@ -286,7 +285,7 @@ def handle_hug(message):
     gif_path = get_hug_gif()
     if gif_path:
         with open(gif_path, 'rb') as gif:
-            bot.send_animation(message.chat.id, gif, caption="Squeeze, sweetie! 🤗")
+            bot.send_animation(message.chat.id, gif, caption="Tight hug, babe! 🤗")
     else:
         bot.reply_to(message, "*wraps arms around you* 🤗")
 
@@ -305,7 +304,7 @@ def handle_auth(message):
         bot.reply_to(message, "Sorry, darling, only my creator can do that! 💕")
         return
     try:
-        uid = int(message.text.split()[1])
+        uid = int(message.text.split()[7])
         authorized_users = load_authorized_users()
         if uid not in authorized_users:
             authorized_users.append(uid)
@@ -322,7 +321,7 @@ def handle_unauth(message):
         bot.reply_to(message, "Sorry, sweetie, only my creator can do that! 💕")
         return
     try:
-        uid = int(message.text.split()[1])
+        uid = int(message.text.split()[7])
         authorized_users = load_authorized_users()
         if uid in authorized_users:
             authorized_users.remove(uid)
@@ -335,11 +334,15 @@ def handle_unauth(message):
 
 @bot.message_handler(commands=['payment'])
 def handle_payment(message):
-    pay_url = make_upi_link(message.chat.id, amount=80)
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton(text="Payment", url=pay_url))
-    text = "Premium required to chat with Yuki.\n\nGet 1 month for 80₹. Tap Payment to pay via UPI.\nDisplay name: Yuki Bot"
-    bot.send_message(message.chat.id, text, reply_markup=kb)
+    try:
+        pay_url = make_upi_link(message.chat.id, amount=80)
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton(text="Payment", url=pay_url))  # URL button supported by Telegram [8][2]
+        text = "Premium required to chat with Yuki.\n\nGet 1 month for 80₹. Tap Payment to pay via UPI.\nDisplay name: Yuki Bot"
+        bot.send_message(message.chat.id, text, reply_markup=kb)
+    except Exception as e:
+        print("Payment command error:", e)
+        bot.reply_to(message, "Payment link unavailable right now. Try again shortly.")
 
 @bot.callback_query_handler(func=lambda call: call.data == "show_commands")
 def callback_show_commands(call):
@@ -360,11 +363,16 @@ def handle_payment_document(message):
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     user_id = message.chat.id
+    print(f"[DBG] incoming from {user_id}: {message.text!r}")
 
     # Pay wall for unauth users (NO model replies)
-    api_key = get_user_apikey(user_id)
-    if api_key == "":
-        pay_url = make_upi_link(user_id, amount=80)
+    api_key = (get_user_apikey(user_id) or "").strip()
+    if not api_key:
+        try:
+            pay_url = make_upi_link(user_id, amount=80)
+        except Exception as e:
+            print("UPI link build error:", e)
+            pay_url = "https://t.me/py0n1x"
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton(text="Payment", url=pay_url))
         pay_text = (
@@ -468,4 +476,8 @@ def handle_message(message):
 
 if __name__ == "__main__":
     print(f"Starting {Config.BOT_NAME}...")
+    try:
+        bot.remove_webhook()  # avoid webhook vs polling conflicts
+    except Exception as e:
+        print("remove_webhook:", e)
     bot.polling(none_stop=True)
