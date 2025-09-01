@@ -455,11 +455,12 @@ def handle_message(message):
     authorized_users = load_authorized_users()
     if (user_id == OWNER_ID) or (user_id in authorized_users):
         response_text = call_venice_openrouter(prompt, user_id=user_id)
-       # Fallback to Gemini if Venice hits rate limit or returns None
+        # Fallback to Gemini only if Venice failed/429 (returned None)
         if response_text is None:
             response_text = call_gemini_api(prompt)
         else:
-             response_text = call_gemini_api(prompt)
+            # Unauth users use Gemini
+            response_text = call_gemini_api(prompt)
 
     
     # Check for shower or dress-related words and attach image
