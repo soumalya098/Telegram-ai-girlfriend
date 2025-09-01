@@ -1,22 +1,20 @@
-# config.py
 import os
 
 class Config:
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-
-    # File paths
+    # Map user IDs to variable names (not the key itself for safety)
+    USER_API_KEY_MAP = {
+        123456789: os.getenv("OPENROUTER_API_KEY_USER1", ""),
+        987654321: os.getenv("OPENROUTER_API_KEY_USER2", ""),
+        # add more user_id: os.getenv(...) pairs here
+    }
     MEMORY_FILE = 'memory.json'
     IMAGE_DIR = 'images/'
-
-    # Bot personality settings
     BOT_NAME = "Yuki"
     PERSONALITY = {
         "friendliness": 0.9,
         "humor": 0.7,
-        "empathy": 0.85
+        "empathy": 0.85,
     }
-
-    # Emotional states
     MOOD_STATES = ["happy", "sad", "excited", "bored", "affectionate"]
+    MSG_LIMIT_FILE = "user_msg_limit.json"
