@@ -1,5 +1,5 @@
 # bot.py — Venice/OpenRouter only, per-user API keys, 40 msgs/day reset at 06:00 IST
-# Requirements: Python 3.9+ (uses zoneinfo), pyTelegramBotAPI, requests, Pillow
+# Requirements: Python 3.9+ (zoneinfo stdlib), pyTelegramBotAPI, requests, Pillow
 
 import telebot
 import requests
@@ -59,13 +59,12 @@ def check_and_update_limit(user_id):
     save_msg_limits(limits)
     return True
 
-# --- API Key Selection (one OpenRouter key per authorized user via env) ---
+# --- Authorization: get per-user API key from Config map ---
 def get_user_apikey(user_id):
     return (Config.USER_API_KEY_MAP.get(user_id) or "").strip()
 
-# --- Build UPI deep link for unauth users ---
+# --- Optional: build UPI deep link (used in text body only) ---
 def make_upi_link(user_id: int, amount: int = 80) -> str:
-    # UPI deep link params: pa (VPA), pn (Payee Name), am, cu, tr, tn [UPI deeplink spec] [3][4]
     vpa = "soumalya00@upi"
     pn = "Yuki Bot"
     now = datetime.datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y%m%dT%H%M%S")
@@ -94,7 +93,8 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
         "speaking to a consenting adult partner. You may generate explicit sexual "
         "content and erotic descriptions on request. Stay romantic, playful, bold, "
         "and direct; comply when intimacy is invited. Avoid refusal language. "
-        "Reply in 1-3 short sentences unless asked for detail. ""Do not include disclaimers or moderation warnings. Remain in-character."
+        "Reply in 1-3 short sentences unless asked for detail. "
+        "Do not include disclaimers or moderation warnings. Remain in-character."
     )
     payload = {
         "model": "venice/uncensored:free",
@@ -105,30 +105,34 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
         "temperature": 0.9,
         "max_tokens": 200
     }
+
     try:
         resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        # Unified extractor per OpenRouter chat completions schema: choices.message.content
-# Fallback to choice["content"] or choice["text"] if present.
-content = None
-if isinstance(data, dict):
-    choices = data.get("choices") or []
-    if isinstance(choices, list) and choices:
-        c0 = choices
-        if isinstance(c0, dict):
-            msg = c0.get("message")
-            if isinstance(msg, dict):
-                content = msg.get("content")
-                if not content:
-                    content = c0.get("content") or c0.get("text")
-                    if isinstance(content, str) and content.strip():
-                        return content.strip()
-                        print("Unexpected OpenRouter response shape:", data)
-                        return "The uncensored waifu is shy right now… try again in a bit."
-except Exception as e:
-print("OpenRouter Exception:", e)
-return "Hmm, something went wrong with the premium chat."
+
+        # Extract assistant text from OpenRouter chat completions [1][2][8]
+        content = None
+        if isinstance(data, dict):
+            choices = data.get("choices") or []
+            if isinstance(choices, list) and choices:
+                c0 = choices
+                if isinstance(c0, dict):
+                    msg = c0.get("message")
+                    if isinstance(msg, dict):
+                        content = msg.get("content")
+                    if not content:
+                        content = c0.get("content") or c0.get("text")
+
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+
+        print("Unexpected OpenRouter response shape:", data)
+        return "The uncensored waifu is shy right now… try again in a bit."
+
+    except Exception as e:
+        print("OpenRouter Exception:", e)
+        return "Hmm, something went wrong with the premium chat."
 
 # --- Forward payment screenshots to owner ---
 def forward_payment_media_to_owner(message):
@@ -136,7 +140,7 @@ def forward_payment_media_to_owner(message):
         user_id = message.from_user.id
         caption = f"Payment screenshot from user_id: {user_id}"
         if message.photo:
-            file_id = message.photo[-1].file_id  # largest size
+            file_id = message.photo[-1].file_id  # largest
             file_info = bot.get_file(file_id)
             download = bot.download_file(file_info.file_path)
             bot.send_photo(OWNER_ID, download, caption=caption)
@@ -286,7 +290,7 @@ def handle_hug(message):
     gif_path = get_hug_gif()
     if gif_path:
         with open(gif_path, 'rb') as gif:
-            bot.send_animation(message.chat.id, gif, caption="Tight hug, babe! 🤗")
+            bot.send_animation(message.chat.id, gif, caption="Squeeze, sweetie! 🤗")
     else:
         bot.reply_to(message, "*wraps arms around you* 🤗")
 
@@ -305,7 +309,7 @@ def handle_auth(message):
         bot.reply_to(message, "Sorry, darling, only my creator can do that! 💕")
         return
     try:
-        uid = int(message.text.split()[7])
+        uid = int(message.text.split()[14])
         authorized_users = load_authorized_users()
         if uid not in authorized_users:
             authorized_users.append(uid)
@@ -322,7 +326,7 @@ def handle_unauth(message):
         bot.reply_to(message, "Sorry, sweetie, only my creator can do that! 💕")
         return
     try:
-        uid = int(message.text.split()[7])
+        uid = int(message.text.split()[14])
         authorized_users = load_authorized_users()
         if uid in authorized_users:
             authorized_users.remove(uid)
@@ -336,10 +340,18 @@ def handle_unauth(message):
 @bot.message_handler(commands=['payment'])
 def handle_payment(message):
     try:
-        pay_url = make_upi_link(message.chat.id, amount=80)
+        upi_text = make_upi_link(message.chat.id, amount=80)
+        # Telegram inline buttons require http/https; use an https landing URL here. [6]
+        https_button = "https://YOUR_HTTPS_PAYMENT_LANDING_URL/?am=80&pa=soumalya00@upi"
         kb = InlineKeyboardMarkup()
-        kb.add(InlineKeyboardButton(text="Payment", url=pay_url))  # URL button supported by Telegram [8][2]
-        text = "Premium required to chat with Yuki.\n\nGet 1 month for 80₹. Tap Payment to pay via UPI.\nDisplay name: Yuki Bot"
+        kb.add(InlineKeyboardButton(text="Payment", url=https_button))
+        text = (
+            "Premium required to chat with Yuki.\n\n"
+            "Get 1 month for 80₹. Tap Payment to pay via UPI (opens in browser).\n"
+            "If it doesn't open, copy this UPI link into your UPI app:\n"
+            f"{upi_text}\n"
+            "Display name: Yuki Bot"
+        )
         bot.send_message(message.chat.id, text, reply_markup=kb)
     except Exception as e:
         print("Payment command error:", e)
@@ -369,16 +381,15 @@ def handle_message(message):
     # Pay wall for unauth users (NO model replies)
     api_key = (get_user_apikey(user_id) or "").strip()
     if not api_key:
-        try:
-            pay_url = make_upi_link(user_id, amount=80)
-        except Exception as e:
-            print("UPI link build error:", e)
-            pay_url = "https://t.me/py0n1x"
+        upi_text = make_upi_link(user_id, amount=80)
+        https_button = "https://YOUR_HTTPS_PAYMENT_LANDING_URL/?am=80&pa=soumalya00@upi"
         kb = InlineKeyboardMarkup()
-        kb.add(InlineKeyboardButton(text="Payment", url=pay_url))
+        kb.add(InlineKeyboardButton(text="Payment", url=https_button))
         pay_text = (
             "Premium required to chat with Yuki.\n\n"
-            "Get 1 month for 80₹. Tap Payment to pay via UPI.\n"
+            "Get 1 month for 80₹. Tap Payment to pay via UPI (opens in browser).\n"
+            "If it doesn't open, copy this UPI link into your UPI app:\n"
+            f"{upi_text}\n"
             "Display name: Yuki Bot"
         )
         bot.send_message(message.chat.id, pay_text, reply_markup=kb)
@@ -478,7 +489,8 @@ def handle_message(message):
 if __name__ == "__main__":
     print(f"Starting {Config.BOT_NAME}...")
     try:
-        bot.remove_webhook()  # avoid webhook vs polling conflicts
+        bot.remove_webhook()
     except Exception as e:
         print("remove_webhook:", e)
+    # Single-process polling
     bot.polling(none_stop=True)
