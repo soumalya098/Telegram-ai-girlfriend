@@ -341,20 +341,18 @@ def handle_unauth(message):
 def handle_payment(message):
     try:
         upi_text = make_upi_link_fampay(user_id=message.chat.id, amount=80)
-        https_button = upi_text  # or use a landing HTTPS link if needed
-        kb = InlineKeyboardMarkup()
-        kb.add(InlineKeyboardButton(text="Payment", url=https_button))
         text = (
             "Premium required to chat with Yuki.\n\n"
-            "Get 1 month for 80₹. Tap Payment to pay via UPI (opens in browser).\n"
-            "If it doesn't open, copy this UPI link into your UPI app:\n"
-            f"{upi_text}\n"
+            "Get 1 month for 80₹.\n"
+            "Copy this UPI link into your UPI app to pay:\n\n"
+            f"{upi_text}\n\n"
             "Display name: Yuki Bot Premium"
         )
-        bot.send_message(message.chat.id, text, reply_markup=kb)
+        bot.send_message(message.chat.id, text)
     except Exception as e:
         print("Payment command error:", e)
         bot.reply_to(message, "Payment link unavailable right now. Try again shortly.")
+
 
 
 @bot.callback_query_handler(func=lambda call: call.data == "show_commands")
