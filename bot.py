@@ -38,7 +38,7 @@ def save_msg_limits(limits):
 def current_reset_id():
     tz = ZoneInfo("Asia/Kolkata")
     now = datetime.datetime.now(tz)
-    reset_hour = 4
+    reset_hour = 6
     reset_time = now.replace(hour=reset_hour, minute=0, second=0, microsecond=0)
     if now.hour < reset_hour:
         reset_time -= datetime.timedelta(days=1)
