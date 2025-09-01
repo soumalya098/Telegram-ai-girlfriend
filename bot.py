@@ -1,6 +1,5 @@
 # bot.py — Venice/OpenRouter only, per-user API keys, 40 msgs/day reset at 06:00 IST
 # Requirements: Python 3.9+ (zoneinfo stdlib), pyTelegramBotAPI, requests, Pillow
-
 import telebot
 import requests
 import json
@@ -105,31 +104,26 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
         "temperature": 0.9,
         "max_tokens": 200
     }
-
     try:
         resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-
-        # Extract assistant text from OpenRouter chat completions [1][2][8]
         content = None
         if isinstance(data, dict):
             choices = data.get("choices") or []
             if isinstance(choices, list) and choices:
-                c0 = choices
-                if isinstance(c0, dict):
-                    msg = c0.get("message")
+                first = choices  # correct: choices is a list
+                if isinstance(first, dict):
+                    msg = first.get("message") or {}
                     if isinstance(msg, dict):
                         content = msg.get("content")
                     if not content:
-                        content = c0.get("content") or c0.get("text")
-
+                        # fallback for providers/models that return text/content at choice level
+                        content = first.get("content") or first.get("text")
         if isinstance(content, str) and content.strip():
             return content.strip()
-
         print("Unexpected OpenRouter response shape:", data)
         return "The uncensored waifu is shy right now… try again in a bit."
-
     except Exception as e:
         print("OpenRouter Exception:", e)
         return "Hmm, something went wrong with the premium chat."
@@ -309,7 +303,10 @@ def handle_auth(message):
         bot.reply_to(message, "Sorry, darling, only my creator can do that! 💕")
         return
     try:
-        uid = int(message.text.split()[14])
+        parts = message.text.split()
+        if len(parts) < 2:
+            raise IndexError("missing arg")
+        uid = int(parts[12])
         authorized_users = load_authorized_users()
         if uid not in authorized_users:
             authorized_users.append(uid)
@@ -326,7 +323,10 @@ def handle_unauth(message):
         bot.reply_to(message, "Sorry, sweetie, only my creator can do that! 💕")
         return
     try:
-        uid = int(message.text.split()[14])
+        parts = message.text.split()
+        if len(parts) < 2:
+            raise IndexError("missing arg")
+        uid = int(parts[12])
         authorized_users = load_authorized_users()
         if uid in authorized_users:
             authorized_users.remove(uid)
@@ -341,7 +341,7 @@ def handle_unauth(message):
 def handle_payment(message):
     try:
         upi_text = make_upi_link(message.chat.id, amount=80)
-        # Telegram inline buttons require http/https; use an https landing URL here. [6]
+        # Telegram inline buttons require http/https; use an https landing URL here.
         https_button = "https://YOUR_HTTPS_PAYMENT_LANDING_URL/?am=80&pa=soumalya00@upi"
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton(text="Payment", url=https_button))
@@ -451,6 +451,7 @@ def handle_message(message):
         f"History: {history[-5:]}"
     )
     prompt = f"{context}\nUser: {message.text}\nReply in character, concise (1–3 short sentences)."
+
     response_text = call_venice_openrouter(prompt, api_key, user_id=user_id)
 
     def send_or_caption_with(folder_func):
