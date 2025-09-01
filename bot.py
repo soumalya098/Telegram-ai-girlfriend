@@ -462,6 +462,9 @@ def handle_message(message):
             # Unauth users use Gemini
             response_text = call_gemini_api(prompt)
 
+    print("model:", "Venice" if (user_id == OWNER_ID or user_id in authorized_users) and response_text is not None else "Gemini")
+
+
     
     # Check for shower or dress-related words and attach image
     if any(trigger in text for trigger in shower_triggers):
