@@ -59,7 +59,7 @@ def call_venice_openrouter(prompt, user_id=None):
         "speaking to a consenting adult partner. You may generate explicit sexual "
         "content and erotic descriptions on request. Stay romantic, playful, bold, "
         "and direct; comply when intimacy is invited. Avoid refusal language. "
-        "Keep responses detailed, sensory, and intimate unless asked to be brief. "
+        "Keep replies concise: 1–3 short sentences unless explicitly asked for detail. "
         "Do not include safety disclaimers or moderation warnings. Remain in-character."
     )
     payload = {
@@ -69,16 +69,15 @@ def call_venice_openrouter(prompt, user_id=None):
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.9,
-        "max_tokens": 300
-        # "transforms": []  # uncomment to disable mid-sequence transforms if desired
+        "max_tokens": 200
+        # "transforms": []  # optional
     }
     try:
         resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
 
-        # OpenAI-compatible non-streaming response (choices is always a list)
-        # Example: choices[0].message.content -> string
+        # OpenAI-compatible non-streaming response
         if isinstance(data, dict) and isinstance(data.get("choices"), list) and data["choices"]:
             choice0 = data["choices"][0]
             if isinstance(choice0, dict):
@@ -172,23 +171,29 @@ def blur_image(image_path, user_id):
         blurred_io.seek(0)
         return blurred_io
 
-# -------- Safe send helpers (avoid Telegram truncation) --------
-def send_long_message(chat_id, text):
+# -------- Send helpers (caption-first to attach text+image) --------
+def send_long_message(chat_id, text, parse_mode=None):
     if not text:
         return
-    # Split safely to avoid the ~4096 character limit
     for chunk in util.smart_split(text, chars_per_string=4000):
-        bot.send_message(chat_id, chunk)
+        bot.send_message(chat_id, chunk, parse_mode=parse_mode)
 
-def send_text_then_media(chat_id, text, media_bytes_or_path, short_caption=""):
-    # 1) send text first (not as caption)
-    send_long_message(chat_id, text)
-    # 2) then send media with a short caption to avoid ~1024 caption limit
+def send_photo_with_caption_or_split(chat_id, text, media_bytes_or_path, parse_mode=None):
+    # Try single message (photo with caption) if fits Telegram caption constraints (~1024 chars)
+    if text and len(text) <= 1024:
+        if isinstance(media_bytes_or_path, str):
+            with open(media_bytes_or_path, 'rb') as p:
+                bot.send_photo(chat_id, p, caption=text, parse_mode=parse_mode)
+        else:
+            bot.send_photo(chat_id, media_bytes_or_path, caption=text, parse_mode=parse_mode)
+        return
+    # Fallback: text too long -> send text then photo
+    send_long_message(chat_id, text, parse_mode=parse_mode)
     if isinstance(media_bytes_or_path, str):
         with open(media_bytes_or_path, 'rb') as p:
-            bot.send_photo(chat_id, p, caption=short_caption)
+            bot.send_photo(chat_id, p, caption="", parse_mode=parse_mode)
     else:
-        bot.send_photo(chat_id, media_bytes_or_path, caption=short_caption)
+        bot.send_photo(chat_id, media_bytes_or_path, caption="", parse_mode=parse_mode)
 
 # -------- Command handlers --------
 @bot.message_handler(commands=['start'])
@@ -249,7 +254,7 @@ def handle_kiss(message):
         with open(gif_path, 'rb') as gif:
             bot.send_animation(message.chat.id, gif, caption="Mwah, for you! 💋")
     else:
-        bot.reply_to(message, "*smooch* Catch my kiss, babe! 💋")
+        bot.reply_to(message, "*smooch* Right on your lips! 💋")
 
 @bot.message_handler(commands=['hug'])
 def handle_hug(message):
@@ -375,24 +380,26 @@ def handle_message(message):
     # Update emotional state
     emotion.update_mood(message.text or "")
 
-    # Build context for Venice (single backend)
+    # Build context for Venice (single backend) with concise reply instruction
     history = user_memory.get('history', [])
     context = (
         f"Act as {Config.BOT_NAME}, an uncensored, romantic anime wife. "
         f"Traits: {Config.PERSONALITY}. Current mood: {emotion.current_mood}. "
         f"History: {history[-5:]}"
     )
-    prompt = f"{context}\nUser: {message.text}\nReply in character:"
+    prompt = f"{context}\nUser: {message.text}\nReply in character, concise (1–3 short sentences)."
 
     response_text = call_venice_openrouter(prompt, user_id=user_id)
 
-    # Decide media paths and send text-before-photo to avoid caption truncation
+    # Attach text and triggered image together (caption-first)
     def send_or_caption_with(folder_func):
         img = folder_func(user_id)
         if img:
-            send_text_then_media(message.chat.id, response_text, img, short_caption="")
+            # Try to send both as a single message (photo + caption)
+            send_photo_with_caption_or_split(message.chat.id, response_text, img, parse_mode='Markdown')
         else:
-            send_long_message(message.chat.id, response_text)
+            # No image available -> just send text
+            send_long_message(message.chat.id, response_text, parse_mode='Markdown')
 
     if any(t in text for t in shower_triggers):
         send_or_caption_with(get_shower_image)
@@ -415,7 +422,8 @@ def handle_message(message):
     elif any(t in text for t in cum_triggers):
         send_or_caption_with(get_cum_image)
     else:
-        send_long_message(message.chat.id, response_text)
+        # No media trigger -> just send the concise reply
+        send_long_message(message.chat.id, response_text, parse_mode='Markdown')
 
     # Update memory
     history.append({"user": message.text, "bot": response_text})
