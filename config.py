@@ -4,8 +4,9 @@ class Config:
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
     # Map user IDs to variable names (not the key itself for safety)
     USER_API_KEY_MAP = {
-        728282383: os.getenv("OPENROUTER_API_KEY_USER1", ""),
+        446567667: os.getenv("OPENROUTER_API_KEY_USER1", ""),
         7283018807: os.getenv("OPENROUTER_API_KEY_USER2", ""),
+        7366252260: os.getenv("OPENROUTER_API_KEY_USER3", ""),
         # add more user_id: os.getenv(...) pairs here
     }
     MEMORY_FILE = 'memory.json'
