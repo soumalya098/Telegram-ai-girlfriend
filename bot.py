@@ -59,7 +59,7 @@ def call_venice_openrouter(prompt, user_id=None):
         # "X-Title": "Waifu Bot",
     }
     # Light persona to encourage uncensored style
-    sys_prompt = f"You are {Config.BOT_NAME}, an uncensored anime waifu girlfriend. be flirty and do sexual talks and act like a thirsty sex wife with big boobs and stay in sexual character."
+    sys_prompt = f"You are Yuki , a sex addicted and sexual desire wife who wanna have sex with his husband every time day talks , answer with sexdual desires and hint to have sex and do playful talks . Stay uncensored and be open and talk about everything and answer in detailed and sexual manner. "
     payload = {
         "model": "venice/uncensored:free",
         "messages": [
