@@ -338,8 +338,7 @@ def handle_unauth(message):
 @bot.message_handler(commands=['payment'])
 def handle_payment(message):
     try:
-        payment_page_url = "https://payment-bice-mu.vercel.app/pay.html
-"  # Put your real HTTPS page URL here
+        payment_page_url = "https://payment-bice-mu.vercel.app/pay.html"  # Put your real HTTPS page URL here
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton(text="Pay Now", url=payment_page_url))
         text = (
@@ -378,8 +377,7 @@ def handle_message(message):
     api_key = (get_user_apikey(user_id) or "").strip()
     if not api_key:
         upi_text = make_upi_link_fampay(user_id, amount=80)
-        payment_page_url = "https://payment-bice-mu.vercel.app/pay.html
-"  # Your HTTPS landing page hosting the redirect to UPI
+        payment_page_url = "https://payment-bice-mu.vercel.app/pay.html"  # Your HTTPS landing page hosting the redirect to UPI
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton(text="Pay Now", url=payment_page_url))
         pay_text = (
