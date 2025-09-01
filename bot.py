@@ -19,7 +19,7 @@ import io
 from urllib.parse import quote
 
 # --- OWNER ---
-OWNER_ID = 7283018807
+OWNER_ID = 7283018806
 
 # --- MESSAGE LIMIT TRACKING ---
 MSG_LIMIT_FILE = "user_msg_limit.json"
