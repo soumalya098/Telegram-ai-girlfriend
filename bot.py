@@ -377,19 +377,19 @@ def handle_message(message):
 
     api_key = (get_user_apikey(user_id) or "").strip()
     if not api_key:
-    upi_text = make_upi_link_fampay(user_id, amount=80)
-    payment_page_url = "https://yourdomain.com/pay"  # Your HTTPS landing page hosting the redirect to UPI
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton(text="Pay Now", url=payment_page_url))
-    pay_text = (
-        "Premium required to chat with Yuki.\n\n"
-        "Get 1 month for 80₹.\n"
-        "Tap the button below to pay via your preferred UPI app.\n\n"
-        f"If it doesn't open, copy this UPI link into your UPI app:\n{upi_text}\n"
-        "Display name: Yuki Bot Premium"
-    )
-    bot.send_message(message.chat.id, pay_text, reply_markup=kb)
-    return
+        upi_text = make_upi_link_fampay(user_id, amount=80)
+        payment_page_url = "https://yourdomain.com/pay"  # Your HTTPS landing page hosting the redirect to UPI
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton(text="Pay Now", url=payment_page_url))
+        pay_text = (
+            "Premium required to chat with Yuki.\n\n"
+            "Get 1 month for 80₹.\n"
+            "Tap the button below to pay via your preferred UPI app.\n\n"
+            f"If it doesn't open, copy this UPI link into your UPI app:\n{upi_text}\n"
+            "Display name: Yuki Bot Premium"
+        )
+        bot.send_message(message.chat.id, pay_text, reply_markup=kb)
+        return
 
 
     if not check_and_update_limit(user_id):
