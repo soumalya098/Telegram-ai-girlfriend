@@ -1,4 +1,4 @@
-# bot.py — Venice/OpenRouter only, per-user API keys, 40 msgs/day reset at 04:00 IST
+# bot.py — Venice/OpenRouter only, per-user API keys, 40 msgs/day reset at 06:00 IST
 # Requirements: Python 3.9+ (uses zoneinfo), pyTelegramBotAPI, requests, Pillow
 
 import telebot
@@ -36,6 +36,7 @@ def save_msg_limits(limits):
         json.dump(limits, f)
 
 def current_reset_id():
+    # NOTE: currently 06:00 IST; change reset_hour to 4 for 04:00 IST
     tz = ZoneInfo("Asia/Kolkata")
     now = datetime.datetime.now(tz)
     reset_hour = 6
@@ -65,7 +66,7 @@ def get_user_apikey(user_id):
 
 # --- Build UPI deep link for unauth users ---
 def make_upi_link(user_id: int, amount: int = 80) -> str:
-    # UPI deep link params: pa (VPA), pn (Payee Name), am, cu, tr, tn [web:286][web:293]
+    # UPI deep link params: pa (VPA), pn (Payee Name), am, cu, tr, tn
     vpa = "soumalya00@upi"
     pn = "Yuki Bot"
     now = datetime.datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y%m%dT%H%M%S")
@@ -110,7 +111,6 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
         resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        # Parse choices[0].message.content (fallback to choice["content"]) [web:210][web:49]
         if isinstance(data, dict) and isinstance(data.get("choices"), list) and data["choices"]:
             choice0 = data["choices"][0]
             if isinstance(choice0, dict):
@@ -127,6 +127,31 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
     except Exception as e:
         print("OpenRouter Exception:", e)
         return "Hmm, something went wrong with the premium chat."
+
+# --- Forward payment screenshots to owner ---
+def forward_payment_media_to_owner(message):
+    try:
+        user_id = message.from_user.id
+        caption = f"Payment screenshot from user_id: {user_id}"
+        # Photos (highest resolution variant)
+        if message.photo:
+            file_id = message.photo[-1].file_id
+            file_info = bot.get_file(file_id)
+            download = bot.download_file(file_info.file_path)
+            bot.send_photo(OWNER_ID, download, caption=caption)
+            bot.reply_to(message, "Thanks! Screenshot received. We'll verify and activate access shortly.")
+            return
+        # Image files sent as documents
+        if message.document and (message.document.mime_type or "").startswith("image/"):
+            file_id = message.document.file_id
+            file_info = bot.get_file(file_id)
+            download = bot.download_file(file_info.file_path)
+            bot.send_document(OWNER_ID, download, caption=caption)
+            bot.reply_to(message, "Thanks! Screenshot received. We'll verify and activate access shortly.")
+            return
+    except Exception as e:
+        print("Forward payment screenshot error:", e)
+        bot.reply_to(message, "Couldn't process the screenshot. Please try again or contact support.")
 
 # --- Media helpers (using your ImageHandler) ---
 def get_kiss_gif(): return images.get_kiss_gif()
@@ -151,7 +176,6 @@ def send_long_message(chat_id, text, parse_mode=None):
         bot.send_message(chat_id, chunk, parse_mode=parse_mode)
 
 def send_photo_with_caption_or_split(chat_id, text, media_bytes_or_path, parse_mode=None):
-    # Prefer single message (photo + caption) if caption <= ~1024 chars [web:178][web:222]
     if text and len(text) <= 1024:
         if isinstance(media_bytes_or_path, str):
             with open(media_bytes_or_path, 'rb') as p:
@@ -262,7 +286,7 @@ def handle_hug(message):
     gif_path = get_hug_gif()
     if gif_path:
         with open(gif_path, 'rb') as gif:
-            bot.send_animation(message.chat.id, gif, caption="Tight hug, babe! 🤗")
+            bot.send_animation(message.chat.id, gif, caption="Squeeze, sweetie! 🤗")
     else:
         bot.reply_to(message, "*wraps arms around you* 🤗")
 
@@ -311,10 +335,9 @@ def handle_unauth(message):
 
 @bot.message_handler(commands=['payment'])
 def handle_payment(message):
-    # Optional: send the same UPI button on command
     pay_url = make_upi_link(message.chat.id, amount=80)
     kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton(text="Payment", url=pay_url))  # Telegram supports URL buttons [web:295][web:287]
+    kb.add(InlineKeyboardButton(text="Payment", url=pay_url))
     text = "Premium required to chat with Yuki.\n\nGet 1 month for 80₹. Tap Payment to pay via UPI.\nDisplay name: Yuki Bot"
     bot.send_message(message.chat.id, text, reply_markup=kb)
 
@@ -323,28 +346,38 @@ def callback_show_commands(call):
     bot.answer_callback_query(call.id)
     bot.send_message(call.message.chat.id, COMMANDS_MSG, parse_mode='Markdown')
 
+# --- Receive payment screenshots and forward to owner ---
+@bot.message_handler(content_types=['photo'])
+def handle_payment_photo(message):
+    forward_payment_media_to_owner(message)
+
+@bot.message_handler(content_types=['document'])
+def handle_payment_document(message):
+    if message.document and (message.document.mime_type or "").startswith("image/"):
+        forward_payment_media_to_owner(message)
+
 # --- Main Message Handler ---
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     user_id = message.chat.id
 
-    # Check authorization: if no per-user API key → show pay message only (no Yuki reply)
+    # Pay wall for unauth users (NO model replies)
     api_key = get_user_apikey(user_id)
     if api_key == "":
         pay_url = make_upi_link(user_id, amount=80)
         kb = InlineKeyboardMarkup()
-        kb.add(InlineKeyboardButton(text="Payment", url=pay_url))  # URL button [web:295][web:287]
+        kb.add(InlineKeyboardButton(text="Payment", url=pay_url))
         pay_text = (
             "Premium required to chat with Yuki.\n\n"
             "Get 1 month for 80₹. Tap Payment to pay via UPI.\n"
             "Display name: Yuki Bot"
         )
         bot.send_message(message.chat.id, pay_text, reply_markup=kb)
-        return  # block chatting for unauth users
+        return
 
-    # Enforce daily limit for authorized users
+    # Daily limit for authorized users
     if not check_and_update_limit(user_id):
-        bot.reply_to(message, "You've reached your 40 daily message limit! Come back after 4:00am IST for more.")
+        bot.reply_to(message, "Baby you've reached your 40 daily message limit! Come back after 6:00am IST for more.")
         return
 
     user_memory = memory.get_user_memory(user_id)
