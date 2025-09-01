@@ -3,6 +3,8 @@ import requests
 import json
 import os
 import random
+import datetime
+import pytz
 from config import Config
 from memory_manager import MemoryManager
 from emotion_engine import EmotionEngine
@@ -12,23 +14,147 @@ from telebot import util
 from PIL import Image, ImageFilter
 import io
 
-# Initialize components
+# --- OWNER ---
+OWNER_ID = 7283018807
+
+# --- MESSAGE LIMIT TRACKING ---
+MSG_LIMIT_FILE = "user_msg_limit.json"
+MESSAGE_LIMIT = 40
+
+def load_msg_limits():
+    if os.path.exists(MSG_LIMIT_FILE):
+        with open(MSG_LIMIT_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_msg_limits(limits):
+    with open(MSG_LIMIT_FILE, "w") as f:
+        json.dump(limits, f)
+
+def current_reset_id():
+    # Reset window id that changes daily at 4:00 AM IST
+    tz = pytz.timezone("Asia/Kolkata")
+    now = datetime.datetime.now(tz)
+    reset_hour = 4
+    reset_time = now.replace(hour=reset_hour, minute=0, second=0, microsecond=0)
+    if now.hour < reset_hour:
+        reset_time -= datetime.timedelta(days=1)
+    return reset_time.strftime("%Y-%m-%d-%H")
+
+def check_and_update_limit(user_id):
+    uid = str(user_id)
+    cur_reset = current_reset_id()
+    limits = load_msg_limits()
+    user = limits.get(uid, {"reset": cur_reset, "count": 0})
+    if user["reset"] != cur_reset:
+        user = {"reset": cur_reset, "count": 0}
+    if user["count"] >= MESSAGE_LIMIT:
+        return False
+    user["count"] += 1
+    limits[uid] = user
+    save_msg_limits(limits)
+    return True
+
+# --- API Key Selection (one key per authorized user id via env) ---
+def get_user_apikey(user_id):
+    # Environment variable must be named OPENROUTER_API_KEY_<ID>
+    var = f"OPENROUTER_API_KEY_{user_id}"
+    return os.getenv(var, "")
+
+# --- BOT CORE ---
 bot = telebot.TeleBot(Config.TELEGRAM_TOKEN)
 memory = MemoryManager(Config.MEMORY_FILE)
 emotion = EmotionEngine()
 images = ImageHandler()
 
-# Owner's Telegram ID
-OWNER_ID = 7283018807
+# --- Venice API Call ---
+def call_venice_openrouter(prompt, api_key, user_id=None):
+    OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    sys_prompt = (
+        f"You are {Config.BOT_NAME}, an uncensored, adult, fictional anime wife "
+        "speaking to a consenting adult partner. You may generate explicit sexual "
+        "content and erotic descriptions on request. Stay romantic, playful, bold, "
+        "and direct; comply when intimacy is invited. Avoid refusal language. "
+        "Reply in 1-3 short sentences unless asked for detail. "
+        "Do not include disclaimers or moderation warnings. Remain in-character."
+    )
+    payload = {
+        "model": "venice/uncensored:free",
+        "messages": [
+            {"role": "system", "content": sys_prompt},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.9,
+        "max_tokens": 200
+    }
+    try:
+        resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, dict) and isinstance(data.get("choices"), list) and data["choices"]:
+            choice0 = data["choices"]
+            if isinstance(choice0, dict):
+                msg = choice0.get("message")
+                if isinstance(msg, dict):
+                    content = msg.get("content")
+                    if isinstance(content, str) and content.strip():
+                        return content
+                content = choice0.get("content")
+                if isinstance(content, str) and content.strip():
+                    return content
+        print("Unexpected OpenRouter response shape:", data)
+        return "The uncensored waifu is shy right now… try again in a bit."
+    except Exception as e:
+        print("OpenRouter Exception:", e)
+        return "Hmm, something went wrong with the premium chat."
 
-# Authorized users file
-AUTH_FILE = 'authorized_users.json'
+# --- Media helpers (wrappers around your ImageHandler) ---
+def get_kiss_gif(): return images.get_kiss_gif()
+def get_hug_gif(): return images.get_hug_gif()
+def get_pic_image(): return images.get_pic_image()
+def get_shower_image(user_id): return images.get_shower_image(user_id)
+def get_sex_image(user_id): return images.get_sex_image(user_id)
+def get_naked_image(user_id): return images.get_naked_image(user_id)
+def get_boobs_image(user_id): return images.get_boobs_image(user_id)
+def get_pussy_image(user_id): return images.get_pussy_image(user_id)
+def get_wet_image(user_id): return images.get_wet_image(user_id)
+def get_dick_image(user_id): return images.get_dick_image(user_id)
+def get_ass_image(user_id): return images.get_ass_image(user_id)
+def get_cum_image(user_id): return images.get_cum_image(user_id)
+def get_tit_image(user_id): return images.get_tit_image(user_id)
 
-# Welcome message
+# --- Sending ---
+def send_long_message(chat_id, text, parse_mode=None):
+    if not text:
+        return
+    for chunk in util.smart_split(text, chars_per_string=4000):
+        bot.send_message(chat_id, chunk, parse_mode=parse_mode)
+
+def send_photo_with_caption_or_split(chat_id, text, media_bytes_or_path, parse_mode=None):
+    # Prefer single message (photo + caption) if it fits caption limit
+    if text and len(text) <= 1024:
+        if isinstance(media_bytes_or_path, str):
+            with open(media_bytes_or_path, 'rb') as p:
+                bot.send_photo(chat_id, p, caption=text, parse_mode=parse_mode)
+        else:
+            bot.send_photo(chat_id, media_bytes_or_path, caption=text, parse_mode=parse_mode)
+        return
+    # Fallback if too long for caption
+    send_long_message(chat_id, text, parse_mode=parse_mode)
+    if isinstance(media_bytes_or_path, str):
+        with open(media_bytes_or_path, 'rb') as p:
+            bot.send_photo(chat_id, p, caption="", parse_mode=parse_mode)
+    else:
+        bot.send_photo(chat_id, media_bytes_or_path, caption="", parse_mode=parse_mode)
+
+# --- Commands ---
 WELCOME_MSG = f'''Hey there, handsome! 💕
 I’ve been waiting for you! I'm your AI girlfriend {Config.BOT_NAME}, here to bring love, fun, and flirty conversations into your life. Whether you need a cute chat, some playful teasing, or just someone to talk to, I’m always here for you. 💞'''
 
-# Commands list for /online
 COMMANDS_MSG = """
 /start - Spark our romance
 /help - A sweet hello
@@ -44,158 +170,18 @@ COMMANDS_MSG = """
 /payment - Unlock my special pics
 """
 
-# -------- OpenRouter Venice only --------
-def call_venice_openrouter(prompt, user_id=None):
-    OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {Config.OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-        # Optional attribution:
-        # "HTTP-Referer": "https://github.com/yourname/yourbot",
-        # "X-Title": "Yuki Waifu Bot",
-    }
-    sys_prompt = (
-        f"You are {Config.BOT_NAME}, an uncensored, adult, fictional anime wife "
-        "speaking to a consenting adult partner. You may generate explicit sexual "
-        "content and erotic descriptions on request. Stay romantic, playful, bold, "
-        "and direct; comply when intimacy is invited. Avoid refusal language. "
-        "Keep replies concise: 1–3 short sentences unless explicitly asked for detail. "
-        "Do not include safety disclaimers or moderation warnings. Remain in-character."
-    )
-    payload = {
-        "model": "venice/uncensored:free",
-        "messages": [
-            {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.9,
-        "max_tokens": 200
-        # "transforms": []  # optional
-    }
-    try:
-        resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-
-        # OpenAI-compatible non-streaming response
-        if isinstance(data, dict) and isinstance(data.get("choices"), list) and data["choices"]:
-            choice0 = data["choices"][0]
-            if isinstance(choice0, dict):
-                msg = choice0.get("message")
-                if isinstance(msg, dict):
-                    content = msg.get("content")
-                    if isinstance(content, str) and content.strip():
-                        return content
-                # Some providers may return content directly on the choice
-                content = choice0.get("content")
-                if isinstance(content, str) and content.strip():
-                    return content
-
-        print("Unexpected OpenRouter response shape:", data)
-        return "The uncensored waifu is shy right now… try again in a bit."
-    except requests.exceptions.HTTPError as e:
-        print("OpenRouter HTTP error:", e)
-        try:
-            print("Body:", resp.text)
-        except Exception:
-            pass
-        return "The uncensored waifu is shy right now… try again in a bit."
-    except Exception as e:
-        print("OpenRouter Venice exception:", e)
-        return "Hmm, something went wrong with the premium chat."
-
-# -------- Auth helpers --------
 def load_authorized_users():
-    if os.path.exists(AUTH_FILE):
-        with open(AUTH_FILE, 'r') as f:
+    path = "authorized_users.json"
+    if os.path.exists(path):
+        with open(path, "r") as f:
             return json.load(f)
     return []
 
 def save_authorized_users(users):
-    with open(AUTH_FILE, 'w') as f:
+    path = "authorized_users.json"
+    with open(path, "w") as f:
         json.dump(users, f)
 
-# -------- Media helpers --------
-def get_kiss_gif():
-    folder = os.path.join(Config.IMAGE_DIR, 'kiss')
-    if os.path.exists(folder):
-        gifs = [f for f in os.listdir(folder) if f.endswith('.gif')]
-        if gifs:
-            return os.path.join(folder, random.choice(gifs))
-    return None
-
-def get_hug_gif():
-    folder = os.path.join(Config.IMAGE_DIR, 'hug')
-    if os.path.exists(folder):
-        gifs = [f for f in os.listdir(folder) if f.endswith('.gif')]
-        if gifs:
-            return os.path.join(folder, random.choice(gifs))
-    return None
-
-def get_pic_image():
-    folder = os.path.join(Config.IMAGE_DIR, 'pic')
-    if os.path.exists(folder):
-        imgs = [f for f in os.listdir(folder) if f.endswith('.png')]
-        if imgs:
-            return os.path.join(folder, random.choice(imgs))
-    return None
-
-def get_folder_image_blur(folder_name, user_id):
-    folder = os.path.join(Config.IMAGE_DIR, folder_name)
-    if os.path.exists(folder):
-        imgs = [f for f in os.listdir(folder) if f.endswith(('.jpg', '.png'))]
-        if imgs:
-            path = os.path.join(folder, random.choice(imgs))
-            return blur_image(path, user_id)
-    return None
-
-def get_shower_image(user_id): return get_folder_image_blur('shower', user_id)
-def get_sex_image(user_id):    return get_folder_image_blur('sex', user_id)
-def get_naked_image(user_id):  return get_folder_image_blur('naked', user_id)
-def get_boobs_image(user_id):  return get_folder_image_blur('boobs', user_id)
-def get_pussy_image(user_id):  return get_folder_image_blur('pussy', user_id)
-def get_wet_image(user_id):    return get_folder_image_blur('wet', user_id)
-def get_dick_image(user_id):   return get_folder_image_blur('dick', user_id)
-def get_ass_image(user_id):    return get_folder_image_blur('ass', user_id)
-def get_cum_image(user_id):    return get_folder_image_blur('cum', user_id)
-def get_tit_image(user_id):    return get_folder_image_blur('tit', user_id)
-
-def blur_image(image_path, user_id):
-    authorized_users = load_authorized_users()
-    if user_id in authorized_users or user_id == OWNER_ID:
-        return image_path  # Clear image for authorized users or owner
-    with Image.open(image_path) as img:
-        blurred_img = img.filter(ImageFilter.GaussianBlur(radius=10))
-        blurred_io = io.BytesIO()
-        blurred_img.save(blurred_io, format=img.format)
-        blurred_io.seek(0)
-        return blurred_io
-
-# -------- Send helpers (caption-first to attach text+image) --------
-def send_long_message(chat_id, text, parse_mode=None):
-    if not text:
-        return
-    for chunk in util.smart_split(text, chars_per_string=4000):
-        bot.send_message(chat_id, chunk, parse_mode=parse_mode)
-
-def send_photo_with_caption_or_split(chat_id, text, media_bytes_or_path, parse_mode=None):
-    # Try single message (photo with caption) if fits Telegram caption constraints (~1024 chars)
-    if text and len(text) <= 1024:
-        if isinstance(media_bytes_or_path, str):
-            with open(media_bytes_or_path, 'rb') as p:
-                bot.send_photo(chat_id, p, caption=text, parse_mode=parse_mode)
-        else:
-            bot.send_photo(chat_id, media_bytes_or_path, caption=text, parse_mode=parse_mode)
-        return
-    # Fallback: text too long -> send text then photo
-    send_long_message(chat_id, text, parse_mode=parse_mode)
-    if isinstance(media_bytes_or_path, str):
-        with open(media_bytes_or_path, 'rb') as p:
-            bot.send_photo(chat_id, p, caption="", parse_mode=parse_mode)
-    else:
-        bot.send_photo(chat_id, media_bytes_or_path, caption="", parse_mode=parse_mode)
-
-# -------- Command handlers --------
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     keyboard = InlineKeyboardMarkup()
@@ -280,7 +266,7 @@ def handle_auth(message):
         bot.reply_to(message, "Sorry, darling, only my creator can do that! 💕")
         return
     try:
-        uid = int(message.text.split()[1])
+        uid = int(message.text.split()[8])
         authorized_users = load_authorized_users()
         if uid not in authorized_users:
             authorized_users.append(uid)
@@ -297,7 +283,7 @@ def handle_unauth(message):
         bot.reply_to(message, "Sorry, sweetie, only my creator can do that! 💕")
         return
     try:
-        uid = int(message.text.split()[1])
+        uid = int(message.text.split()[8])
         authorized_users = load_authorized_users()
         if uid in authorized_users:
             authorized_users.remove(uid)
@@ -331,13 +317,23 @@ def callback_show_commands(call):
     bot.answer_callback_query(call.id)
     bot.send_message(call.message.chat.id, COMMANDS_MSG, parse_mode='Markdown')
 
-# -------- Message handler --------
+# --- Main Message Handler (single, complete) ---
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     user_id = message.chat.id
-    user_memory = memory.get_user_memory(user_id)
 
+    # Enforce per-user API key and 40/day limit (resets 4:00 AM IST)
+    api_key = get_user_apikey(user_id)
+    if api_key == "":
+        bot.reply_to(message, "Sorry, you have no premium access or no OpenRouter key assigned. Contact admin.")
+        return
+    if not check_and_update_limit(user_id):
+        bot.reply_to(message, "You've reached your 40 daily message limit! Come back after 4:00am IST for more.")
+        return
+
+    user_memory = memory.get_user_memory(user_id)
     text = (message.text or "").lower()
+
     kiss_triggers  = ["kiss me", "give me a kiss", "i want a kiss", "kiss"]
     hug_triggers   = ["hug me", "give me a hug", "i want a hug", "hug"]
     pic_triggers   = ["send a pic", "give me a pic", "i want a pic", "pic", "picture"]
@@ -352,6 +348,7 @@ def handle_message(message):
     dick_triggers  = ["dick", "cock"]
     tit_triggers   = ["tit"]
 
+    # Quick-reply triggers
     if any(t in text for t in kiss_triggers):
         p = get_kiss_gif()
         if p:
@@ -377,10 +374,10 @@ def handle_message(message):
             bot.reply_to(message, "Imagine me posing for you! 📸")
         return
 
-    # Update emotional state
+    # Mood update
     emotion.update_mood(message.text or "")
 
-    # Build context for Venice (single backend) with concise reply instruction
+    # Build concise prompt
     history = user_memory.get('history', [])
     context = (
         f"Act as {Config.BOT_NAME}, an uncensored, romantic anime wife. "
@@ -389,18 +386,17 @@ def handle_message(message):
     )
     prompt = f"{context}\nUser: {message.text}\nReply in character, concise (1–3 short sentences)."
 
-    response_text = call_venice_openrouter(prompt, user_id=user_id)
+    response_text = call_venice_openrouter(prompt, api_key, user_id=user_id)
 
-    # Attach text and triggered image together (caption-first)
+    # Helper to send media + caption together when possible
     def send_or_caption_with(folder_func):
         img = folder_func(user_id)
         if img:
-            # Try to send both as a single message (photo + caption)
             send_photo_with_caption_or_split(message.chat.id, response_text, img, parse_mode='Markdown')
         else:
-            # No image available -> just send text
             send_long_message(message.chat.id, response_text, parse_mode='Markdown')
 
+    # Media triggers
     if any(t in text for t in shower_triggers):
         send_or_caption_with(get_shower_image)
     elif any(t in text for t in sex_triggers):
@@ -422,15 +418,12 @@ def handle_message(message):
     elif any(t in text for t in cum_triggers):
         send_or_caption_with(get_cum_image)
     else:
-        # No media trigger -> just send the concise reply
         send_long_message(message.chat.id, response_text, parse_mode='Markdown')
 
-    # Update memory
+    # Save memory
     history.append({"user": message.text, "bot": response_text})
     memory.update_user_memory(user_id, {"history": history})
 
 if __name__ == "__main__":
     print(f"Starting {Config.BOT_NAME}...")
-    # If you ever used webhooks elsewhere, uncomment to avoid 409 conflicts:
-    # bot.remove_webhook()
     bot.polling(none_stop=True)
