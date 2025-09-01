@@ -339,8 +339,7 @@ def handle_unauth(message):
 def handle_payment(message):
     try:
         upi_text = make_upi_link(message.chat.id, amount=80)
-        https_button = "upi://pay?pa=soumalya00@fam&pn=Yuki%20Bot%20Premium&am=80&cu=INR&tn=Yuki%20Premium%201%20month
-"
+        https_button = "upi://pay?pa=soumalya00@fam&pn=Yuki%20Bot%20Premium&am=80&cu=INR&tn=Yuki%20Premium%201%20month"
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton(text="Payment", url=https_button))
         text = (
@@ -380,8 +379,7 @@ def handle_message(message):
     api_key = (get_user_apikey(user_id) or "").strip()
     if not api_key:
         upi_text = make_upi_link(user_id, amount=80)
-        https_button = "upi://pay?pa=soumalya00@fam&pn=Yuki%20Bot%20Premium&am=80&cu=INR&tn=Yuki%20Premium%201%20month
-"
+        https_button = "upi://pay?pa=soumalya00@fam&pn=Yuki%20Bot%20Premium&am=80&cu=INR&tn=Yuki%20Premium%201%20month"
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton(text="Payment", url=https_button))
         pay_text = (
