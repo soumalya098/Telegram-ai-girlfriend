@@ -8,6 +8,7 @@ from memory_manager import MemoryManager
 from emotion_engine import EmotionEngine
 from image_handler import ImageHandler
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot import util
 from PIL import Image, ImageFilter
 import io
 
@@ -17,8 +18,8 @@ memory = MemoryManager(Config.MEMORY_FILE)
 emotion = EmotionEngine()
 images = ImageHandler()
 
-# Owner's Telegram ID (replace with your actual ID)
-OWNER_ID = 7283018807  # Replace with your Telegram ID
+# Owner's Telegram ID
+OWNER_ID = 7283018807
 
 # Authorized users file
 AUTH_FILE = 'authorized_users.json'
@@ -49,7 +50,7 @@ def call_venice_openrouter(prompt, user_id=None):
     headers = {
         "Authorization": f"Bearer {Config.OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
-        # Optional attribution headers (helpful but not required)
+        # Optional attribution:
         # "HTTP-Referer": "https://github.com/yourname/yourbot",
         # "X-Title": "Yuki Waifu Bot",
     }
@@ -68,16 +69,37 @@ def call_venice_openrouter(prompt, user_id=None):
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.9,
-        "max_tokens": 300  # allow a bit more room
-        # If you want to disable any transforms: "transforms": []
+        "max_tokens": 300
+        # "transforms": []  # uncomment to disable mid-sequence transforms if desired
     }
     try:
         resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"]["message"]["content"]
+
+        # OpenAI-compatible non-streaming response (choices is always a list)
+        # Example: choices[0].message.content -> string
+        if isinstance(data, dict) and isinstance(data.get("choices"), list) and data["choices"]:
+            choice0 = data["choices"][0]
+            if isinstance(choice0, dict):
+                msg = choice0.get("message")
+                if isinstance(msg, dict):
+                    content = msg.get("content")
+                    if isinstance(content, str) and content.strip():
+                        return content
+                # Some providers may return content directly on the choice
+                content = choice0.get("content")
+                if isinstance(content, str) and content.strip():
+                    return content
+
+        print("Unexpected OpenRouter response shape:", data)
+        return "The uncensored waifu is shy right now… try again in a bit."
     except requests.exceptions.HTTPError as e:
-        print("OpenRouter Venice error:", e)
+        print("OpenRouter HTTP error:", e)
+        try:
+            print("Body:", resp.text)
+        except Exception:
+            pass
         return "The uncensored waifu is shy right now… try again in a bit."
     except Exception as e:
         print("OpenRouter Venice exception:", e)
@@ -154,14 +176,14 @@ def blur_image(image_path, user_id):
 def send_long_message(chat_id, text):
     if not text:
         return
-    max_len = 4000  # Telegram ~4096; keep a small margin
-    for i in range(0, len(text), max_len):
-        bot.send_message(chat_id, text[i:i+max_len])
+    # Split safely to avoid the ~4096 character limit
+    for chunk in util.smart_split(text, chars_per_string=4000):
+        bot.send_message(chat_id, chunk)
 
 def send_text_then_media(chat_id, text, media_bytes_or_path, short_caption=""):
     # 1) send text first (not as caption)
     send_long_message(chat_id, text)
-    # 2) then send media with a short caption to avoid 1024 caption limit
+    # 2) then send media with a short caption to avoid ~1024 caption limit
     if isinstance(media_bytes_or_path, str):
         with open(media_bytes_or_path, 'rb') as p:
             bot.send_photo(chat_id, p, caption=short_caption)
@@ -236,7 +258,7 @@ def handle_hug(message):
         with open(gif_path, 'rb') as gif:
             bot.send_animation(message.chat.id, gif, caption="Squeeze, sweetie! 🤗")
     else:
-        bot.reply_to(message, "*hugs* Feel my arms, love! 🤗")
+        bot.reply_to(message, "*wraps arms around you* 🤗")
 
 @bot.message_handler(commands=['pic'])
 def handle_pic(message):
@@ -253,7 +275,7 @@ def handle_auth(message):
         bot.reply_to(message, "Sorry, darling, only my creator can do that! 💕")
         return
     try:
-        uid = int(message.text.split()[13])
+        uid = int(message.text.split()[1])
         authorized_users = load_authorized_users()
         if uid not in authorized_users:
             authorized_users.append(uid)
@@ -270,7 +292,7 @@ def handle_unauth(message):
         bot.reply_to(message, "Sorry, sweetie, only my creator can do that! 💕")
         return
     try:
-        uid = int(message.text.split()[13])
+        uid = int(message.text.split()[1])
         authorized_users = load_authorized_users()
         if uid in authorized_users:
             authorized_users.remove(uid)
@@ -401,6 +423,6 @@ def handle_message(message):
 
 if __name__ == "__main__":
     print(f"Starting {Config.BOT_NAME}...")
-    # If you ever used webhooks elsewhere, uncomment this to avoid 409 conflicts:
+    # If you ever used webhooks elsewhere, uncomment to avoid 409 conflicts:
     # bot.remove_webhook()
     bot.polling(none_stop=True)
