@@ -202,9 +202,7 @@ COMMANDS_MSG = """
 /kiss - Lips for you
 /hug - Arms around you
 /pic - A peek at me
-/auth <user_id> - (Owner only) Grant special access
-/unauth <user_id> - (Owner only) Revoke special access
-/payment - Unlock my special pics
+/payment - Buy Yuki's Premium
 """
 
 def load_authorized_users():
@@ -340,13 +338,15 @@ def handle_unauth(message):
 @bot.message_handler(commands=['payment'])
 def handle_payment(message):
     try:
-        payment_page_url = "https://yourdomain.com/pay"  # Put your real HTTPS page URL here
+        payment_page_url = "https://payment-bice-mu.vercel.app/pay.html
+"  # Put your real HTTPS page URL here
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton(text="Pay Now", url=payment_page_url))
         text = (
             "Premium required to chat with Yuki.\n\n"
             "Get 1 month for ₹80.\n"
             "Tap the button below to pay securely using your preferred UPI app."
+            "after payment send the screenshot to the bot to activate your premium"
         )
         bot.send_message(message.chat.id, text, reply_markup=kb)
     except Exception as e:
@@ -378,7 +378,8 @@ def handle_message(message):
     api_key = (get_user_apikey(user_id) or "").strip()
     if not api_key:
         upi_text = make_upi_link_fampay(user_id, amount=80)
-        payment_page_url = "https://yourdomain.com/pay"  # Your HTTPS landing page hosting the redirect to UPI
+        payment_page_url = "https://payment-bice-mu.vercel.app/pay.html
+"  # Your HTTPS landing page hosting the redirect to UPI
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton(text="Pay Now", url=payment_page_url))
         pay_text = (
@@ -387,6 +388,8 @@ def handle_message(message):
             "Tap the button below to pay via your preferred UPI app.\n\n"
             f"If it doesn't open, copy this UPI link into your UPI app:\n{upi_text}\n"
             "Display name: Yuki Bot Premium"
+
+            "after payment send the screenshot to the bot to activate your premium"
         )
         bot.send_message(message.chat.id, pay_text, reply_markup=kb)
         return
