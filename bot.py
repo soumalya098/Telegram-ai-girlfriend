@@ -384,9 +384,6 @@ def handle_message(message):
             "Premium required to chat with Yuki.\n\n"
             "Get 1 month for 80₹.\n"
             "Tap the button below to pay via your preferred UPI app.\n\n"
-            f"If it doesn't open, copy this UPI link into your UPI app:\n{upi_text}\n"
-            "Display name: Yuki Bot Premium"
-
             "after payment send the screenshot to the bot to activate your premium"
         )
         bot.send_message(message.chat.id, pay_text, reply_markup=kb)
