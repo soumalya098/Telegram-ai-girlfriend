@@ -61,8 +61,7 @@ def check_and_update_limit(user_id):
 
 # --- API Key Selection (one OpenRouter key per authorized user via env) ---
 def get_user_apikey(user_id):
-    var = f"OPENROUTER_API_KEY_{user_id}"
-    return os.getenv(var, "")
+    return (Config.USER_API_KEY_MAP.get(user_id) or "").strip()
 
 # --- Build UPI deep link for unauth users ---
 def make_upi_link(user_id: int, amount: int = 80) -> str:
