@@ -1,10 +1,13 @@
+# bot.py — Venice/OpenRouter only, per-user API keys, 40 msgs/day reset at 04:00 IST
+# Requirements: Python 3.9+ (uses zoneinfo), pyTelegramBotAPI, requests, Pillow
+
 import telebot
 import requests
 import json
 import os
 import random
 import datetime
-import pytz
+from zoneinfo import ZoneInfo
 from config import Config
 from memory_manager import MemoryManager
 from emotion_engine import EmotionEngine
@@ -32,8 +35,10 @@ def save_msg_limits(limits):
         json.dump(limits, f)
 
 def current_reset_id():
-    # Reset window id that changes daily at 4:00 AM IST
-    tz = pytz.timezone("Asia/Kolkata")
+    # Daily reset window identifier that changes at 04:00 AM IST (Asia/Kolkata)
+    # Uses Python stdlib zoneinfo (no pytz needed) [docs confirm ZoneInfo usage]
+    # refs: zoneinfo stdlib usage (Asia/Kolkata) [web:244][web:234]
+    tz = ZoneInfo("Asia/Kolkata")
     now = datetime.datetime.now(tz)
     reset_hour = 4
     reset_time = now.replace(hour=reset_hour, minute=0, second=0, microsecond=0)
@@ -55,9 +60,9 @@ def check_and_update_limit(user_id):
     save_msg_limits(limits)
     return True
 
-# --- API Key Selection (one key per authorized user id via env) ---
+# --- API Key Selection (one OpenRouter key per authorized user via env) ---
 def get_user_apikey(user_id):
-    # Environment variable must be named OPENROUTER_API_KEY_<ID>
+    # Set an env var in Railway named OPENROUTER_API_KEY_<TELEGRAM_ID>
     var = f"OPENROUTER_API_KEY_{user_id}"
     return os.getenv(var, "")
 
@@ -67,7 +72,7 @@ memory = MemoryManager(Config.MEMORY_FILE)
 emotion = EmotionEngine()
 images = ImageHandler()
 
-# --- Venice API Call ---
+# --- Venice (OpenRouter) API Call ---
 def call_venice_openrouter(prompt, api_key, user_id=None):
     OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -95,14 +100,17 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
         resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
+        # OpenRouter chat completions: choices is a list; message.content carries text
+        # refs: OpenAI/OpenRouter chat completions parsing [web:210][web:49]
         if isinstance(data, dict) and isinstance(data.get("choices"), list) and data["choices"]:
-            choice0 = data["choices"]
+            choice0 = data["choices"][0]
             if isinstance(choice0, dict):
                 msg = choice0.get("message")
                 if isinstance(msg, dict):
                     content = msg.get("content")
                     if isinstance(content, str) and content.strip():
                         return content
+                # Some providers may place text directly in choice["content"]
                 content = choice0.get("content")
                 if isinstance(content, str) and content.strip():
                     return content
@@ -112,7 +120,7 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
         print("OpenRouter Exception:", e)
         return "Hmm, something went wrong with the premium chat."
 
-# --- Media helpers (wrappers around your ImageHandler) ---
+# --- Media helpers (using your ImageHandler) ---
 def get_kiss_gif(): return images.get_kiss_gif()
 def get_hug_gif(): return images.get_hug_gif()
 def get_pic_image(): return images.get_pic_image()
@@ -127,7 +135,7 @@ def get_ass_image(user_id): return images.get_ass_image(user_id)
 def get_cum_image(user_id): return images.get_cum_image(user_id)
 def get_tit_image(user_id): return images.get_tit_image(user_id)
 
-# --- Sending ---
+# --- Sending helpers ---
 def send_long_message(chat_id, text, parse_mode=None):
     if not text:
         return
@@ -135,7 +143,8 @@ def send_long_message(chat_id, text, parse_mode=None):
         bot.send_message(chat_id, chunk, parse_mode=parse_mode)
 
 def send_photo_with_caption_or_split(chat_id, text, media_bytes_or_path, parse_mode=None):
-    # Prefer single message (photo + caption) if it fits caption limit
+    # Attach text+image as one message if caption <= ~1024 chars, else fallback
+    # refs: caption-length constraints and approach [web:178][web:222]
     if text and len(text) <= 1024:
         if isinstance(media_bytes_or_path, str):
             with open(media_bytes_or_path, 'rb') as p:
@@ -143,7 +152,6 @@ def send_photo_with_caption_or_split(chat_id, text, media_bytes_or_path, parse_m
         else:
             bot.send_photo(chat_id, media_bytes_or_path, caption=text, parse_mode=parse_mode)
         return
-    # Fallback if too long for caption
     send_long_message(chat_id, text, parse_mode=parse_mode)
     if isinstance(media_bytes_or_path, str):
         with open(media_bytes_or_path, 'rb') as p:
@@ -266,7 +274,7 @@ def handle_auth(message):
         bot.reply_to(message, "Sorry, darling, only my creator can do that! 💕")
         return
     try:
-        uid = int(message.text.split()[8])
+        uid = int(message.text.split()[1])
         authorized_users = load_authorized_users()
         if uid not in authorized_users:
             authorized_users.append(uid)
@@ -283,7 +291,7 @@ def handle_unauth(message):
         bot.reply_to(message, "Sorry, sweetie, only my creator can do that! 💕")
         return
     try:
-        uid = int(message.text.split()[8])
+        uid = int(message.text.split()[1])
         authorized_users = load_authorized_users()
         if uid in authorized_users:
             authorized_users.remove(uid)
@@ -317,12 +325,12 @@ def callback_show_commands(call):
     bot.answer_callback_query(call.id)
     bot.send_message(call.message.chat.id, COMMANDS_MSG, parse_mode='Markdown')
 
-# --- Main Message Handler (single, complete) ---
+# --- Main Message Handler ---
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     user_id = message.chat.id
 
-    # Enforce per-user API key and 40/day limit (resets 4:00 AM IST)
+    # Enforce per-user API key and 40/day limit (resets 04:00 IST)
     api_key = get_user_apikey(user_id)
     if api_key == "":
         bot.reply_to(message, "Sorry, you have no premium access or no OpenRouter key assigned. Contact admin.")
@@ -348,7 +356,7 @@ def handle_message(message):
     dick_triggers  = ["dick", "cock"]
     tit_triggers   = ["tit"]
 
-    # Quick-reply triggers
+    # Quick media triggers
     if any(t in text for t in kiss_triggers):
         p = get_kiss_gif()
         if p:
@@ -374,10 +382,8 @@ def handle_message(message):
             bot.reply_to(message, "Imagine me posing for you! 📸")
         return
 
-    # Mood update
+    # Mood and prompt
     emotion.update_mood(message.text or "")
-
-    # Build concise prompt
     history = user_memory.get('history', [])
     context = (
         f"Act as {Config.BOT_NAME}, an uncensored, romantic anime wife. "
@@ -385,10 +391,9 @@ def handle_message(message):
         f"History: {history[-5:]}"
     )
     prompt = f"{context}\nUser: {message.text}\nReply in character, concise (1–3 short sentences)."
-
     response_text = call_venice_openrouter(prompt, api_key, user_id=user_id)
 
-    # Helper to send media + caption together when possible
+    # Attach text + image together when possible
     def send_or_caption_with(folder_func):
         img = folder_func(user_id)
         if img:
@@ -396,7 +401,6 @@ def handle_message(message):
         else:
             send_long_message(message.chat.id, response_text, parse_mode='Markdown')
 
-    # Media triggers
     if any(t in text for t in shower_triggers):
         send_or_caption_with(get_shower_image)
     elif any(t in text for t in sex_triggers):
