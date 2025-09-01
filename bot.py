@@ -94,8 +94,7 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
         "speaking to a consenting adult partner. You may generate explicit sexual "
         "content and erotic descriptions on request. Stay romantic, playful, bold, "
         "and direct; comply when intimacy is invited. Avoid refusal language. "
-        "Reply in 1-3 short sentences unless asked for detail. "
-        "Do not include disclaimers or moderation warnings. Remain in-character."
+        "Reply in 1-3 short sentences unless asked for detail. ""Do not include disclaimers or moderation warnings. Remain in-character."
     )
     payload = {
         "model": "venice/uncensored:free",
@@ -110,23 +109,26 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
         resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        # Parse choices.message.content, fallback to choice["content"] [chat-completions pattern] [5][6]
-        if isinstance(data, dict) and isinstance(data.get("choices"), list) and data["choices"]:
-            choice0 = data["choices"]
-            if isinstance(choice0, dict):
-                msg = choice0.get("message")
-                if isinstance(msg, dict):
-                    content = msg.get("content")
+        # Unified extractor per OpenRouter chat completions schema: choices.message.content
+# Fallback to choice["content"] or choice["text"] if present.
+content = None
+if isinstance(data, dict):
+    choices = data.get("choices") or []
+    if isinstance(choices, list) and choices:
+        c0 = choices
+        if isinstance(c0, dict):
+            msg = c0.get("message")
+            if isinstance(msg, dict):
+                content = msg.get("content")
+                if not content:
+                    content = c0.get("content") or c0.get("text")
                     if isinstance(content, str) and content.strip():
-                        return content
-                content = choice0.get("content")
-                if isinstance(content, str) and content.strip():
-                    return content
-        print("Unexpected OpenRouter response shape:", data)
-        return "The uncensored waifu is shy right now… try again in a bit."
-    except Exception as e:
-        print("OpenRouter Exception:", e)
-        return "Hmm, something went wrong with the premium chat."
+                        return content.strip()
+                        print("Unexpected OpenRouter response shape:", data)
+                        return "The uncensored waifu is shy right now… try again in a bit."
+except Exception as e:
+print("OpenRouter Exception:", e)
+return "Hmm, something went wrong with the premium chat."
 
 # --- Forward payment screenshots to owner ---
 def forward_payment_media_to_owner(message):
