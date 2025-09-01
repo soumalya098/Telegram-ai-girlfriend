@@ -35,7 +35,6 @@ def save_msg_limits(limits):
         json.dump(limits, f)
 
 def current_reset_id():
-    # NOTE: currently 06:00 IST; change reset_hour to 4 for 04:00 IST
     tz = ZoneInfo("Asia/Kolkata")
     now = datetime.datetime.now(tz)
     reset_hour = 6
@@ -112,7 +111,7 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
         if isinstance(data, dict):
             choices = data.get("choices") or []
             if isinstance(choices, list) and choices:
-                first = choices  # correct indexing
+                first = choices[0]  # Must index the list
                 if isinstance(first, dict):
                     msg = first.get("message") or {}
                     if isinstance(msg, dict):
@@ -126,7 +125,6 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
     except Exception as e:
         print("OpenRouter Exception:", e)
         return "Hmm, something went wrong with the premium chat."
-
 
 # --- Forward payment screenshots to owner ---
 def forward_payment_media_to_owner(message):
@@ -317,7 +315,6 @@ def handle_auth(message):
     except (IndexError, ValueError):
         bot.reply_to(message, "Use it like this, love: /auth <user_id> 💋")
 
-
 @bot.message_handler(commands=['unauth'])
 def handle_unauth(message):
     if message.from_user.id != OWNER_ID:
@@ -327,7 +324,7 @@ def handle_unauth(message):
         parts = message.text.split()
         if len(parts) < 2:
             raise IndexError("missing arg")
-        uid = int(parts[12])
+        uid = int(parts[1])
         authorized_users = load_authorized_users()
         if uid in authorized_users:
             authorized_users.remove(uid)
@@ -342,7 +339,6 @@ def handle_unauth(message):
 def handle_payment(message):
     try:
         upi_text = make_upi_link(message.chat.id, amount=80)
-        # Telegram inline buttons require http/https; use an https landing URL here.
         https_button = "https://YOUR_HTTPS_PAYMENT_LANDING_URL/?am=80&pa=soumalya00@upi"
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton(text="Payment", url=https_button))
@@ -360,10 +356,12 @@ def handle_payment(message):
 
 @bot.callback_query_handler(func=lambda call: call.data == "show_commands")
 def callback_show_commands(call):
-    bot.answer_callback_query(call.id)
+    try:
+        bot.answer_callback_query(call.id)
+    except Exception as e:
+        print("answer_callback_query error:", e)
     bot.send_message(call.message.chat.id, COMMANDS_MSG, parse_mode='Markdown')
 
-# --- Receive payment screenshots and forward to owner ---
 @bot.message_handler(content_types=['photo'])
 def handle_payment_photo(message):
     forward_payment_media_to_owner(message)
@@ -373,13 +371,11 @@ def handle_payment_document(message):
     if message.document and (message.document.mime_type or "").startswith("image/"):
         forward_payment_media_to_owner(message)
 
-# --- Main Message Handler ---
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     user_id = message.chat.id
     print(f"[DBG] incoming from {user_id}: {message.text!r}")
 
-    # Pay wall for unauth users (NO model replies)
     api_key = (get_user_apikey(user_id) or "").strip()
     if not api_key:
         upi_text = make_upi_link(user_id, amount=80)
@@ -396,7 +392,6 @@ def handle_message(message):
         bot.send_message(message.chat.id, pay_text, reply_markup=kb)
         return
 
-    # Daily limit for authorized users
     if not check_and_update_limit(user_id):
         bot.reply_to(message, "Baby you've reached your 40 daily message limit! Come back after 6:00am IST for more.")
         return
@@ -443,7 +438,6 @@ def handle_message(message):
             bot.reply_to(message, "Imagine me posing for you! 📸")
         return
 
-    # Mood and prompt
     emotion.update_mood(message.text or "")
     history = user_memory.get('history', [])
     context = (
@@ -494,5 +488,4 @@ if __name__ == "__main__":
         bot.remove_webhook()
     except Exception as e:
         print("remove_webhook:", e)
-    # Single-process polling
     bot.polling(none_stop=True)
