@@ -62,16 +62,16 @@ def get_user_apikey(user_id):
     return (Config.USER_API_KEY_MAP.get(user_id) or "").strip()
 
 # --- Optional: build UPI deep link (used in text body only) ---
-def make_upi_link(user_id: int, amount: int = 80) -> str:
-    vpa = "soumalya00@upi"
-    pn = "Yuki Bot"
-    now = datetime.datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y%m%dT%H%M%S")
-    tr = f"SUB-{user_id}-{now}"
+def make_upi_link_fampay(amount=80):
+    vpa = "soumalya00@fam"
+    pn = "Yuki Bot Premium"
     tn = "Yuki Premium 1 month"
-    return (
+    upi_uri = (
         "upi://pay?"
-        f"pa={quote(vpa)}&pn={quote(pn)}&am={amount}&cu=INR&tr={quote(tr)}&tn={quote(tn)}"
+        f"pa={quote(vpa)}&pn={quote(pn)}&am={amount}&cu=INR&tn={quote(tn)}"
     )
+    return upi_uri
+
 
 # --- BOT CORE ---
 bot = telebot.TeleBot(Config.TELEGRAM_TOKEN)
