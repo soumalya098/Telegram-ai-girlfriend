@@ -16,6 +16,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from telebot import util
 from PIL import Image, ImageFilter
 import io
+from urllib.parse import quote
 
 # --- OWNER ---
 OWNER_ID = 7283018807
@@ -35,9 +36,6 @@ def save_msg_limits(limits):
         json.dump(limits, f)
 
 def current_reset_id():
-    # Daily reset window identifier that changes at 04:00 AM IST (Asia/Kolkata)
-    # Uses Python stdlib zoneinfo (no pytz needed) [docs confirm ZoneInfo usage]
-    # refs: zoneinfo stdlib usage (Asia/Kolkata) [web:244][web:234]
     tz = ZoneInfo("Asia/Kolkata")
     now = datetime.datetime.now(tz)
     reset_hour = 4
@@ -62,9 +60,21 @@ def check_and_update_limit(user_id):
 
 # --- API Key Selection (one OpenRouter key per authorized user via env) ---
 def get_user_apikey(user_id):
-    # Set an env var in Railway named OPENROUTER_API_KEY_<TELEGRAM_ID>
     var = f"OPENROUTER_API_KEY_{user_id}"
     return os.getenv(var, "")
+
+# --- Build UPI deep link for unauth users ---
+def make_upi_link(user_id: int, amount: int = 80) -> str:
+    # UPI deep link params: pa (VPA), pn (Payee Name), am, cu, tr, tn [web:286][web:293]
+    vpa = "soumalya00@upi"
+    pn = "Yuki Bot"
+    now = datetime.datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y%m%dT%H%M%S")
+    tr = f"SUB-{user_id}-{now}"
+    tn = "Yuki Premium 1 month"
+    return (
+        "upi://pay?"
+        f"pa={quote(vpa)}&pn={quote(pn)}&am={amount}&cu=INR&tr={quote(tr)}&tn={quote(tn)}"
+    )
 
 # --- BOT CORE ---
 bot = telebot.TeleBot(Config.TELEGRAM_TOKEN)
@@ -100,8 +110,7 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
         resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        # OpenRouter chat completions: choices is a list; message.content carries text
-        # refs: OpenAI/OpenRouter chat completions parsing [web:210][web:49]
+        # Parse choices[0].message.content (fallback to choice["content"]) [web:210][web:49]
         if isinstance(data, dict) and isinstance(data.get("choices"), list) and data["choices"]:
             choice0 = data["choices"][0]
             if isinstance(choice0, dict):
@@ -110,7 +119,6 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
                     content = msg.get("content")
                     if isinstance(content, str) and content.strip():
                         return content
-                # Some providers may place text directly in choice["content"]
                 content = choice0.get("content")
                 if isinstance(content, str) and content.strip():
                     return content
@@ -143,8 +151,7 @@ def send_long_message(chat_id, text, parse_mode=None):
         bot.send_message(chat_id, chunk, parse_mode=parse_mode)
 
 def send_photo_with_caption_or_split(chat_id, text, media_bytes_or_path, parse_mode=None):
-    # Attach text+image as one message if caption <= ~1024 chars, else fallback
-    # refs: caption-length constraints and approach [web:178][web:222]
+    # Prefer single message (photo + caption) if caption <= ~1024 chars [web:178][web:222]
     if text and len(text) <= 1024:
         if isinstance(media_bytes_or_path, str):
             with open(media_bytes_or_path, 'rb') as p:
@@ -255,7 +262,7 @@ def handle_hug(message):
     gif_path = get_hug_gif()
     if gif_path:
         with open(gif_path, 'rb') as gif:
-            bot.send_animation(message.chat.id, gif, caption="Squeeze, sweetie! 🤗")
+            bot.send_animation(message.chat.id, gif, caption="Tight hug, babe! 🤗")
     else:
         bot.reply_to(message, "*wraps arms around you* 🤗")
 
@@ -304,21 +311,12 @@ def handle_unauth(message):
 
 @bot.message_handler(commands=['payment'])
 def handle_payment(message):
-    keyboard = InlineKeyboardMarkup()
-    owner_button = InlineKeyboardButton(text="Send Screenshot", url="https://t.me/py0n1x")
-    keyboard.add(owner_button)
-    path = os.path.join(Config.IMAGE_DIR, 'payment', 'payment.png')
-    payment_msg = '''To see my special images buy my premium
-
-1 month = 50₹ / 0.6$
-1 year  = 500₹ / 5.8$
-
-send the payment screenshot to my creator'''
-    if os.path.exists(path):
-        with open(path, 'rb') as photo:
-            bot.send_photo(message.chat.id, photo, caption=payment_msg, reply_markup=keyboard, parse_mode='Markdown')
-    else:
-        bot.reply_to(message, payment_msg, reply_markup=keyboard)
+    # Optional: send the same UPI button on command
+    pay_url = make_upi_link(message.chat.id, amount=80)
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton(text="Payment", url=pay_url))  # Telegram supports URL buttons [web:295][web:287]
+    text = "Premium required to chat with Yuki.\n\nGet 1 month for 80₹. Tap Payment to pay via UPI.\nDisplay name: Yuki Bot"
+    bot.send_message(message.chat.id, text, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda call: call.data == "show_commands")
 def callback_show_commands(call):
@@ -330,11 +328,21 @@ def callback_show_commands(call):
 def handle_message(message):
     user_id = message.chat.id
 
-    # Enforce per-user API key and 40/day limit (resets 04:00 IST)
+    # Check authorization: if no per-user API key → show pay message only (no Yuki reply)
     api_key = get_user_apikey(user_id)
     if api_key == "":
-        bot.reply_to(message, "Sorry, you have no premium access or no OpenRouter key assigned. Contact admin.")
-        return
+        pay_url = make_upi_link(user_id, amount=80)
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton(text="Payment", url=pay_url))  # URL button [web:295][web:287]
+        pay_text = (
+            "Premium required to chat with Yuki.\n\n"
+            "Get 1 month for 80₹. Tap Payment to pay via UPI.\n"
+            "Display name: Yuki Bot"
+        )
+        bot.send_message(message.chat.id, pay_text, reply_markup=kb)
+        return  # block chatting for unauth users
+
+    # Enforce daily limit for authorized users
     if not check_and_update_limit(user_id):
         bot.reply_to(message, "You've reached your 40 daily message limit! Come back after 4:00am IST for more.")
         return
@@ -356,7 +364,6 @@ def handle_message(message):
     dick_triggers  = ["dick", "cock"]
     tit_triggers   = ["tit"]
 
-    # Quick media triggers
     if any(t in text for t in kiss_triggers):
         p = get_kiss_gif()
         if p:
@@ -393,7 +400,6 @@ def handle_message(message):
     prompt = f"{context}\nUser: {message.text}\nReply in character, concise (1–3 short sentences)."
     response_text = call_venice_openrouter(prompt, api_key, user_id=user_id)
 
-    # Attach text + image together when possible
     def send_or_caption_with(folder_func):
         img = folder_func(user_id)
         if img:
@@ -424,7 +430,6 @@ def handle_message(message):
     else:
         send_long_message(message.chat.id, response_text, parse_mode='Markdown')
 
-    # Save memory
     history.append({"user": message.text, "bot": response_text})
     memory.update_user_memory(user_id, {"history": history})
 
