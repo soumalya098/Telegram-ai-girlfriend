@@ -62,13 +62,15 @@ def get_user_apikey(user_id):
     return (Config.USER_API_KEY_MAP.get(user_id) or "").strip()
 
 # --- Optional: build UPI deep link (used in text body only) ---
-def make_upi_link_fampay(amount=80):
+def make_upi_link_fampay(user_id=None, amount=80):
     vpa = "soumalya00@fam"
     pn = "Yuki Bot Premium"
     tn = "Yuki Premium 1 month"
+    now = datetime.datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y%m%dT%H%M%S")
+    tr = f"SUB-{user_id}-{now}" if user_id else now
     upi_uri = (
         "upi://pay?"
-        f"pa={quote(vpa)}&pn={quote(pn)}&am={amount}&cu=INR&tn={quote(tn)}"
+        f"pa={quote(vpa)}&pn={quote(pn)}&am={amount}&cu=INR&tn={quote(tn)}&tr={quote(tr)}"
     )
     return upi_uri
 
@@ -338,8 +340,8 @@ def handle_unauth(message):
 @bot.message_handler(commands=['payment'])
 def handle_payment(message):
     try:
-        upi_text = make_upi_link_fampay(message.chat.id, amount=80)
-        https_button = "upi://pay?pa=soumalya00@fam&pn=Yuki%20Bot%20Premium&am=80&cu=INR&tn=Yuki%20Premium%201%20month"
+        upi_text = make_upi_link_fampay(user_id=message.chat.id, amount=80)
+        https_button = upi_text  # or use a landing HTTPS link if needed
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton(text="Payment", url=https_button))
         text = (
@@ -347,12 +349,13 @@ def handle_payment(message):
             "Get 1 month for 80₹. Tap Payment to pay via UPI (opens in browser).\n"
             "If it doesn't open, copy this UPI link into your UPI app:\n"
             f"{upi_text}\n"
-            "Display name: Yuki Bot"
+            "Display name: Yuki Bot Premium"
         )
         bot.send_message(message.chat.id, text, reply_markup=kb)
     except Exception as e:
         print("Payment command error:", e)
         bot.reply_to(message, "Payment link unavailable right now. Try again shortly.")
+
 
 @bot.callback_query_handler(func=lambda call: call.data == "show_commands")
 def callback_show_commands(call):
