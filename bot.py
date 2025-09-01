@@ -339,4 +339,68 @@ def handle_message(message):
             with open(p, 'rb') as gif:
                 bot.send_animation(message.chat.id, gif, caption="Tight hug, babe! 🤗")
         else:
-            bot.reply_to(message, "*wraps arms around you* 🤗
+            bot.reply_to(message, "*wraps arms around you* 🤗")
+        return
+    elif any(t in text for t in pic_triggers):
+        p = get_pic_image()
+        if p:
+            with open(p, 'rb') as photo:
+                bot.send_photo(message.chat.id, photo, caption="Just for you, hot stuff! 📸")
+        else:
+            bot.reply_to(message, "Imagine me posing for you! 📸")
+        return
+
+    # Update emotional state
+    emotion.update_mood(message.text or "")
+
+    # Build context for Venice (single backend)
+    history = user_memory.get('history', [])
+    context = (
+        f"Act as {Config.BOT_NAME}, an uncensored, romantic anime wife. "
+        f"Traits: {Config.PERSONALITY}. Current mood: {emotion.current_mood}. "
+        f"History: {history[-5:]}"
+    )
+    prompt = f"{context}\nUser: {message.text}\nReply in character:"
+
+    response_text = call_venice_openrouter(prompt, user_id=user_id)
+
+    # Decide media paths and send text-before-photo to avoid caption truncation
+    def send_or_caption_with(folder_func):
+        img = folder_func(user_id)
+        if img:
+            send_text_then_media(message.chat.id, response_text, img, short_caption="")
+        else:
+            send_long_message(message.chat.id, response_text)
+
+    if any(t in text for t in shower_triggers):
+        send_or_caption_with(get_shower_image)
+    elif any(t in text for t in sex_triggers):
+        send_or_caption_with(get_sex_image)
+    elif any(t in text for t in naked_triggers):
+        send_or_caption_with(get_naked_image)
+    elif any(t in text for t in pussy_triggers):
+        send_or_caption_with(get_pussy_image)
+    elif any(t in text for t in boobs_triggers):
+        send_or_caption_with(get_boobs_image)
+    elif any(t in text for t in ass_triggers):
+        send_or_caption_with(get_ass_image)
+    elif any(t in text for t in dick_triggers):
+        send_or_caption_with(get_dick_image)
+    elif any(t in text for t in wet_triggers):
+        send_or_caption_with(get_wet_image)
+    elif any(t in text for t in tit_triggers):
+        send_or_caption_with(get_tit_image)
+    elif any(t in text for t in cum_triggers):
+        send_or_caption_with(get_cum_image)
+    else:
+        send_long_message(message.chat.id, response_text)
+
+    # Update memory
+    history.append({"user": message.text, "bot": response_text})
+    memory.update_user_memory(user_id, {"history": history})
+
+if __name__ == "__main__":
+    print(f"Starting {Config.BOT_NAME}...")
+    # If you ever used webhooks elsewhere, uncomment this to avoid 409 conflicts:
+    # bot.remove_webhook()
+    bot.polling(none_stop=True)
