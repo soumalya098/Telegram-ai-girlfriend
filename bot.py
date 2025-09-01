@@ -112,13 +112,12 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
         if isinstance(data, dict):
             choices = data.get("choices") or []
             if isinstance(choices, list) and choices:
-                first = choices  # correct: choices is a list
+                first = choices  # correct indexing
                 if isinstance(first, dict):
                     msg = first.get("message") or {}
                     if isinstance(msg, dict):
                         content = msg.get("content")
                     if not content:
-                        # fallback for providers/models that return text/content at choice level
                         content = first.get("content") or first.get("text")
         if isinstance(content, str) and content.strip():
             return content.strip()
@@ -127,6 +126,7 @@ def call_venice_openrouter(prompt, api_key, user_id=None):
     except Exception as e:
         print("OpenRouter Exception:", e)
         return "Hmm, something went wrong with the premium chat."
+
 
 # --- Forward payment screenshots to owner ---
 def forward_payment_media_to_owner(message):
@@ -306,7 +306,7 @@ def handle_auth(message):
         parts = message.text.split()
         if len(parts) < 2:
             raise IndexError("missing arg")
-        uid = int(parts[12])
+        uid = int(parts[1])
         authorized_users = load_authorized_users()
         if uid not in authorized_users:
             authorized_users.append(uid)
@@ -316,6 +316,7 @@ def handle_auth(message):
             bot.reply_to(message, f"User {uid} already has my special access, babe! 💕")
     except (IndexError, ValueError):
         bot.reply_to(message, "Use it like this, love: /auth <user_id> 💋")
+
 
 @bot.message_handler(commands=['unauth'])
 def handle_unauth(message):
