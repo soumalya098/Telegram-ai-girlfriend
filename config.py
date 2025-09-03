@@ -7,6 +7,7 @@ class Config:
         7283018807: os.getenv("OPENROUTER_API_KEY_USER1", ""),
         8055250585: os.getenv("OPENROUTER_API_KEY_USER2", ""),
         7366252260: os.getenv("OPENROUTER_API_KEY_USER3", ""),
+        7119078400: os.getenv("OPENROUTER_API_KEY_USER3", ""),
         # add more user_id: os.getenv(...) pairs here
     }
     MEMORY_FILE = 'memory.json'
